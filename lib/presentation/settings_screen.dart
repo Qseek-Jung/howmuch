@@ -199,6 +199,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: CupertinoFormSection.insetGrouped(
               header: const Text("음성 지원(TTS) 설정"),
               backgroundColor: Colors.transparent,
+              footer: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  "해당기능이 지원이 안되는 언어가 있을 수 있습니다.",
+                  style: TextStyle(fontSize: 13),
+                ),
+              ),
               children: [
                 CupertinoFormRow(
                   prefix: const Row(
@@ -228,7 +235,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           SliverToBoxAdapter(
             child: CupertinoFormSection.insetGrouped(
-              header: const Text("정산 계좌 정보 (자동 완성용)"),
+              header: const Text("정산 계좌 정보 (카톡 메세지 자동완성용)"),
               backgroundColor: Colors.transparent,
               footer: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 8),
