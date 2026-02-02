@@ -280,7 +280,11 @@ class TranslationService {
   }
 
   /// Translate Korean text to a specific language key (e.g., 'es', 'JPY')
-  Future<String> translateToLanguage(String koreanText, String langKey) async {
+  Future<String> translateToLanguage(
+    String koreanText,
+    String langKey, {
+    bool forceDownload = true,
+  }) async {
     final targetLang = phraseKeyToLanguage[langKey];
     if (targetLang == null || targetLang == TranslateLanguage.korean) {
       return koreanText;
@@ -293,6 +297,7 @@ class TranslationService {
           targetLang.bcpCode,
         );
         if (!isDownloaded) {
+          if (!forceDownload) return koreanText;
           await _modelManager.downloadModel(targetLang.bcpCode);
         }
         _translators[key] = OnDeviceTranslator(

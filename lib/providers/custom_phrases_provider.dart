@@ -124,18 +124,32 @@ class CustomPhrasesNotifier extends StateNotifier<List<CustomPhrase>> {
   ) async {
     final translationService = TranslationService();
 
-    // Get all supported language keys
-    final keys = TranslationService.phraseKeyToLanguage.keys.toList();
+    // 1. Identify current language for this uniqueId (Priority)
+    final currentLangKey = ShoppingPhrases.getLanguageCode(uniqueId);
+    final allKeys = TranslationService.phraseKeyToLanguage.keys.toList();
 
-    for (final langCodeKey in keys) {
-      // Check if phrase still exists (might have been deleted while translating)
+    // 2. Put current language first to ensure it's translated even if download is needed
+    final List<String> priorityKeys = [];
+    if (allKeys.contains(currentLangKey)) priorityKeys.add(currentLangKey);
+    priorityKeys.addAll(allKeys.where((k) => k != currentLangKey));
+
+    for (final langCodeKey in priorityKeys) {
+      // Check if phrase still exists
       final index = state.indexWhere((p) => p.id == phraseId);
       if (index == -1) return;
 
       try {
+        // For the current priority language, we allow download.
+        // For others, we skip if not downloaded to avoid massive zip downloads.
+        final isCurrent = langCodeKey == currentLangKey;
+
+        // Skip translation if it's already present (unlikely for new phrase, but good for safety)
+        if (state[index].translations.containsKey(langCodeKey)) continue;
+
         final translation = await translationService.translateToLanguage(
           koreanText,
           langCodeKey,
+          forceDownload: isCurrent,
         );
 
         if (translation != koreanText) {
@@ -150,8 +164,8 @@ class CustomPhrasesNotifier extends StateNotifier<List<CustomPhrase>> {
           }).toList();
         }
 
-        // Small yield to keep UI responsive
-        await Future.delayed(const Duration(milliseconds: 50));
+        // yield to keep UI responsive
+        await Future.delayed(const Duration(milliseconds: 30));
       } catch (e) {
         print('Background translation error for $langCodeKey: $e');
       }

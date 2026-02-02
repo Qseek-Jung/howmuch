@@ -38,6 +38,7 @@ class _ShoppingHelperModeState extends ConsumerState<ShoppingHelperMode> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.uniqueId != widget.uniqueId) {
       _updateTtsLanguage();
+      _translateAllForCurrentLanguage();
     }
   }
 
@@ -143,6 +144,27 @@ class _ShoppingHelperModeState extends ConsumerState<ShoppingHelperMode> {
           IosTextToSpeechAudioCategoryOptions.mixWithOthers,
         ], IosTextToSpeechAudioMode.voicePrompt);
     _updateTtsLanguage();
+    _translateAllForCurrentLanguage();
+  }
+
+  Future<void> _translateAllForCurrentLanguage() async {
+    final langCode = ShoppingPhrases.getLanguageCode(widget.uniqueId);
+    final phrases = ref.read(customPhrasesProvider(widget.uniqueId));
+    final notifier = ref.read(customPhrasesProvider(widget.uniqueId).notifier);
+
+    for (final phrase in phrases) {
+      if (!phrase.translations.containsKey(langCode)) {
+        // Extract code for translation service fallback
+        final parts = widget.uniqueId.split(':');
+        final code = parts.length > 1 ? parts[1] : parts[0];
+
+        final translation = await _translationService.translate(
+          phrase.koreanText,
+          code,
+        );
+        await notifier.updateTranslation(phrase.id, langCode, translation);
+      }
+    }
   }
 
   Future<void> _speak(String text) async {
