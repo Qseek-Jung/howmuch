@@ -1,4 +1,4 @@
-package com.example.exchange_flutter
+package com.qseek.howmuch
 
 import io.flutter.embedding.android.FlutterActivity
 
