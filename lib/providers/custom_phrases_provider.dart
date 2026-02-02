@@ -4,69 +4,71 @@ import 'package:uuid/uuid.dart';
 import '../models/custom_phrase.dart';
 import '../core/shopping_phrases.dart';
 import '../services/translation_service.dart';
+import '../presentation/home/currency_provider.dart';
 
-const _storageKey = 'custom_phrases';
-const _seededKey =
-    'has_seeded_defaults_v4'; // Incremented to v4 to force re-seed/merge logic
+/// Global storage key for phrases
+const _globalStorageKey = 'custom_phrases_global';
+const _seededKey = 'has_seeded_defaults_v5'; // v5 for global merge
 
-/// Provider for custom phrases
+/// Unified provider for all custom phrases
 final customPhrasesProvider =
-    StateNotifierProvider.family<
-      CustomPhrasesNotifier,
-      List<CustomPhrase>,
-      String
-    >((ref, uniqueId) {
-      return CustomPhrasesNotifier(uniqueId);
+    StateNotifierProvider<CustomPhrasesNotifier, List<CustomPhrase>>((ref) {
+      return CustomPhrasesNotifier(ref);
     });
 
 class CustomPhrasesNotifier extends StateNotifier<List<CustomPhrase>> {
+  final Ref _ref;
   final _uuid = const Uuid();
-  final String uniqueId;
 
-  CustomPhrasesNotifier(this.uniqueId) : super([]) {
+  CustomPhrasesNotifier(this._ref) : super([]) {
     _loadPhrases();
   }
 
   Future<void> _loadPhrases() async {
     final prefs = await SharedPreferences.getInstance();
-    final storageKey = "${_storageKey}_$uniqueId";
-    final jsonString = prefs.getString(storageKey);
+    final jsonString = prefs.getString(_globalStorageKey);
     List<CustomPhrase> currentPhrases = [];
+
     if (jsonString != null && jsonString.isNotEmpty) {
       try {
         currentPhrases = CustomPhrase.decodeList(jsonString);
       } catch (e) {
-        print('Error loading custom phrases for $uniqueId: $e');
-        currentPhrases = [];
+        print('Error loading global custom phrases: $e');
       }
     }
 
-    // Check if defaults are already seeded for this uniqueId
-    final seededKey = "${_seededKey}_$uniqueId";
-    final bool hasSeeded = prefs.getBool(seededKey) ?? false;
+    // Migration logic: If global is empty, try to pull from current selected currency
+    if (currentPhrases.isEmpty) {
+      final lastId = prefs.getString('last_selected_currency_id');
+      if (lastId != null) {
+        final legacyKey = "custom_phrases_$lastId";
+        final legacyJson = prefs.getString(legacyKey);
+        if (legacyJson != null && legacyJson.isNotEmpty) {
+          try {
+            currentPhrases = CustomPhrase.decodeList(legacyJson);
+            print('Migrated phrases from $lastId to global storage');
+          } catch (_) {}
+        }
+      }
+    }
+
+    final bool hasSeeded = prefs.getBool(_seededKey) ?? false;
 
     if (!hasSeeded) {
-      // Create/Update phrases from default ShoppingPhrases
       final List<CustomPhrase> updatedPhrases = List.from(currentPhrases);
 
       for (int i = 0; i < ShoppingPhrases.koreanPhrases.length; i++) {
         final koreanText = ShoppingPhrases.koreanPhrases[i];
         final Map<String, String> translations = {};
 
-        // Populate translations from ShoppingPhrases.translations
         ShoppingPhrases.translations.forEach((langCode, list) {
-          if (i < list.length) {
-            translations[langCode] = list[i];
-          }
+          if (i < list.length) translations[langCode] = list[i];
         });
 
-        // Find existing phrase with same Korean text
         final existingIndex = updatedPhrases.indexWhere(
           (p) => p.koreanText == koreanText,
         );
-
         if (existingIndex != -1) {
-          // Update translations for existing default phrase
           updatedPhrases[existingIndex] = updatedPhrases[existingIndex]
               .copyWith(
                 translations: {
@@ -75,7 +77,6 @@ class CustomPhrasesNotifier extends StateNotifier<List<CustomPhrase>> {
                 },
               );
         } else {
-          // Add as new default phrase
           updatedPhrases.insert(
             i < updatedPhrases.length ? i : updatedPhrases.length,
             CustomPhrase(
@@ -86,10 +87,9 @@ class CustomPhrasesNotifier extends StateNotifier<List<CustomPhrase>> {
           );
         }
       }
-
       state = updatedPhrases;
       await _savePhrases();
-      await prefs.setBool(seededKey, true);
+      await prefs.setBool(_seededKey, true);
     } else {
       state = currentPhrases;
     }
@@ -97,11 +97,9 @@ class CustomPhrasesNotifier extends StateNotifier<List<CustomPhrase>> {
 
   Future<void> _savePhrases() async {
     final prefs = await SharedPreferences.getInstance();
-    final storageKey = "${_storageKey}_$uniqueId";
-    await prefs.setString(storageKey, CustomPhrase.encodeList(state));
+    await prefs.setString(_globalStorageKey, CustomPhrase.encodeList(state));
   }
 
-  /// Add a new custom phrase with background auto-translation
   Future<void> addPhrase(String koreanText) async {
     final phraseId = _uuid.v4();
     final phrase = CustomPhrase(
@@ -109,12 +107,8 @@ class CustomPhrasesNotifier extends StateNotifier<List<CustomPhrase>> {
       koreanText: koreanText,
       translations: {},
     );
-
-    // Add instantly to UI
     state = [...state, phrase];
     await _savePhrases();
-
-    // Start background translation without awaiting it here to prevent ANR
     _translateInBackground(phraseId, koreanText);
   }
 
@@ -124,36 +118,34 @@ class CustomPhrasesNotifier extends StateNotifier<List<CustomPhrase>> {
   ) async {
     final translationService = TranslationService();
 
-    // 1. Identify current language for this uniqueId (Priority)
-    final currentLangKey = ShoppingPhrases.getLanguageCode(uniqueId);
-    final allKeys = TranslationService.phraseKeyToLanguage.keys.toList();
+    // 1. Get Priority Languages: Current + Favorites
+    final selectedId = _ref.read(selectedCurrencyIdProvider);
+    final favorites = _ref.read(favoriteCurrenciesProvider);
 
-    // 2. Put current language first to ensure it's translated even if download is needed
-    final List<String> priorityKeys = [];
-    if (allKeys.contains(currentLangKey)) priorityKeys.add(currentLangKey);
-    priorityKeys.addAll(allKeys.where((k) => k != currentLangKey));
+    final Set<String> priorityLangKeys = {};
+    if (selectedId != null) {
+      priorityLangKeys.add(ShoppingPhrases.getLanguageCode(selectedId));
+    }
+    for (final favId in favorites) {
+      priorityLangKeys.add(ShoppingPhrases.getLanguageCode(favId));
+    }
 
-    for (final langCodeKey in priorityKeys) {
-      // Check if phrase still exists
+    // 2. Translate only for priority languages to save data/models
+    for (final langCodeKey in priorityLangKeys) {
       final index = state.indexWhere((p) => p.id == phraseId);
       if (index == -1) return;
 
       try {
-        // For the current priority language, we allow download.
-        // For others, we skip if not downloaded to avoid massive zip downloads.
-        final isCurrent = langCodeKey == currentLangKey;
-
-        // Skip translation if it's already present (unlikely for new phrase, but good for safety)
         if (state[index].translations.containsKey(langCodeKey)) continue;
 
+        // Force download for these priority languages
         final translation = await translationService.translateToLanguage(
           koreanText,
           langCodeKey,
-          forceDownload: isCurrent,
+          forceDownload: true,
         );
 
         if (translation != koreanText) {
-          // Update state incrementally
           state = state.map((p) {
             if (p.id == phraseId) {
               final newTranslations = Map<String, String>.from(p.translations);
@@ -163,25 +155,19 @@ class CustomPhrasesNotifier extends StateNotifier<List<CustomPhrase>> {
             return p;
           }).toList();
         }
-
-        // yield to keep UI responsive
         await Future.delayed(const Duration(milliseconds: 30));
       } catch (e) {
         print('Background translation error for $langCodeKey: $e');
       }
     }
-
-    // Save final results to disk
     await _savePhrases();
   }
 
-  /// Remove a phrase by ID
   Future<void> removePhrase(String id) async {
     state = state.where((p) => p.id != id).toList();
     await _savePhrases();
   }
 
-  /// Update a single translation for a phrase
   Future<void> updateTranslation(
     String id,
     String langCode,
@@ -198,12 +184,9 @@ class CustomPhrasesNotifier extends StateNotifier<List<CustomPhrase>> {
     await _savePhrases();
   }
 
-  /// Reorder phrases
   Future<void> reorderPhrases(int oldIndex, int newIndex) async {
     final List<CustomPhrase> list = List.from(state);
-    if (oldIndex < newIndex) {
-      newIndex -= 1;
-    }
+    if (oldIndex < newIndex) newIndex -= 1;
     final item = list.removeAt(oldIndex);
     list.insert(newIndex, item);
     state = list;

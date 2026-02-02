@@ -8,7 +8,7 @@ import '../providers/custom_phrases_provider.dart';
 import '../providers/ad_settings_provider.dart';
 import '../services/admob_service.dart';
 import '../core/design_system.dart';
-import 'home/currency_provider.dart'; // selectedCurrencyIdProvider가 여기에 있음
+// Removed unused import
 
 class ShoppingHelperSettingsScreen extends ConsumerStatefulWidget {
   const ShoppingHelperSettingsScreen({super.key});
@@ -83,11 +83,8 @@ class _ShoppingHelperSettingsScreenState
   Future<void> _addCustomPhrase(String koreanText) async {
     setState(() => _isTranslating = true);
 
-    final uniqueId = ref.read(selectedCurrencyIdProvider) ?? '일본:JPY';
     try {
-      await ref
-          .read(customPhrasesProvider(uniqueId).notifier)
-          .addPhrase(koreanText);
+      await ref.read(customPhrasesProvider.notifier).addPhrase(koreanText);
       HapticFeedback.mediumImpact();
     } catch (e) {
       print('Error adding phrase: $e');
@@ -154,9 +151,8 @@ class _ShoppingHelperSettingsScreenState
   }
 
   Future<void> _deletePhrase(String id) async {
-    final uniqueId = ref.read(selectedCurrencyIdProvider) ?? '일본:JPY';
     HapticFeedback.lightImpact();
-    await ref.read(customPhrasesProvider(uniqueId).notifier).removePhrase(id);
+    await ref.read(customPhrasesProvider.notifier).removePhrase(id);
   }
 
   Future<void> _confirmDelete(CustomPhrase phrase) async {
@@ -187,8 +183,7 @@ class _ShoppingHelperSettingsScreenState
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final uniqueId = ref.watch(selectedCurrencyIdProvider) ?? '일본:JPY';
-    final customPhrases = ref.watch(customPhrasesProvider(uniqueId));
+    final customPhrases = ref.watch(customPhrasesProvider);
 
     return Scaffold(
       backgroundColor: isDark ? Colors.black : const Color(0xFFF2F2F7),
@@ -250,10 +245,8 @@ class _ShoppingHelperSettingsScreenState
                   itemCount: customPhrases.length,
                   onReorder: (oldIndex, newIndex) {
                     HapticFeedback.lightImpact();
-                    final uniqueId =
-                        ref.read(selectedCurrencyIdProvider) ?? '일본:JPY';
                     ref
-                        .read(customPhrasesProvider(uniqueId).notifier)
+                        .read(customPhrasesProvider.notifier)
                         .reorderPhrases(oldIndex, newIndex);
                   },
                   itemBuilder: (context, index) {

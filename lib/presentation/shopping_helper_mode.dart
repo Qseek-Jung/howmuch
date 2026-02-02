@@ -149,8 +149,8 @@ class _ShoppingHelperModeState extends ConsumerState<ShoppingHelperMode> {
 
   Future<void> _translateAllForCurrentLanguage() async {
     final langCode = ShoppingPhrases.getLanguageCode(widget.uniqueId);
-    final phrases = ref.read(customPhrasesProvider(widget.uniqueId));
-    final notifier = ref.read(customPhrasesProvider(widget.uniqueId).notifier);
+    final phrases = ref.read(customPhrasesProvider);
+    final notifier = ref.read(customPhrasesProvider.notifier);
 
     for (final phrase in phrases) {
       if (!phrase.translations.containsKey(langCode)) {
@@ -188,9 +188,8 @@ class _ShoppingHelperModeState extends ConsumerState<ShoppingHelperMode> {
         phrase.koreanText,
         code,
       );
-      await ref
-          .read(customPhrasesProvider(widget.uniqueId).notifier)
-          .updateTranslation(phrase.id, langCode, translation);
+      final notifier = ref.read(customPhrasesProvider.notifier);
+      await notifier.updateTranslation(phrase.id, langCode, translation);
     }
 
     await _speak(translation);
@@ -205,7 +204,7 @@ class _ShoppingHelperModeState extends ConsumerState<ShoppingHelperMode> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final customPhrases = ref.watch(customPhrasesProvider(widget.uniqueId));
+    final customPhrases = ref.watch(customPhrasesProvider);
 
     ref.listen(settingsProvider.select((s) => s.ttsGender), (prev, next) {
       if (prev != next) {
@@ -338,9 +337,7 @@ class _ShoppingHelperModeState extends ConsumerState<ShoppingHelperMode> {
   Future<void> _addPhraseWithLoading(String text) async {
     setState(() => _isTranslating = true);
     try {
-      await ref
-          .read(customPhrasesProvider(widget.uniqueId).notifier)
-          .addPhrase(text);
+      await ref.read(customPhrasesProvider.notifier).addPhrase(text);
       HapticFeedback.mediumImpact();
     } catch (e) {
       print("Error adding phrase: $e");
@@ -368,9 +365,7 @@ class _ShoppingHelperModeState extends ConsumerState<ShoppingHelperMode> {
             isDestructiveAction: true,
             child: const Text("삭제"),
             onPressed: () {
-              ref
-                  .read(customPhrasesProvider(widget.uniqueId).notifier)
-                  .removePhrase(phrase.id);
+              ref.read(customPhrasesProvider.notifier).removePhrase(phrase.id);
               Navigator.pop(context);
             },
           ),
