@@ -19,6 +19,7 @@ class _ExcelExportOptionsSheetState extends State<ExcelExportOptionsSheet> {
   bool _includeReceipts = true;
   bool _includeSettlement = true;
   bool _includeCharts = true;
+  bool _includePaymentMethod = true;
   int _selectedRoundUnit = 1000;
   String? _selectedManager;
 
@@ -37,6 +38,7 @@ class _ExcelExportOptionsSheetState extends State<ExcelExportOptionsSheet> {
       includeCharts: _includeCharts,
       roundingUnit: _selectedRoundUnit,
       managerName: _selectedManager,
+      includePaymentMethod: _includePaymentMethod,
     );
     Navigator.pop(context, options);
   }
@@ -111,6 +113,13 @@ class _ExcelExportOptionsSheetState extends State<ExcelExportOptionsSheet> {
                       "1/N 정산",
                       _includeSettlement,
                       (v) => setState(() => _includeSettlement = v),
+                      isDark,
+                    ),
+                    _buildDivider(isDark),
+                    _buildSwitchRow(
+                      "결제 수단 정보",
+                      _includePaymentMethod,
+                      (v) => setState(() => _includePaymentMethod = v),
                       isDark,
                     ),
                     _buildDivider(isDark),

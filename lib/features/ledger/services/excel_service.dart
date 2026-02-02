@@ -13,6 +13,7 @@ class ExcelExportOptions {
   final bool includeCharts; // Renamed from includeSummary
   final int roundingUnit;
   final String? managerName; // Who gets the surplus
+  final bool includePaymentMethod;
 
   ExcelExportOptions({
     this.includeReceipts = true,
@@ -20,6 +21,7 @@ class ExcelExportOptions {
     this.includeCharts = true,
     this.roundingUnit = 1000,
     this.managerName,
+    this.includePaymentMethod = true,
   });
 }
 
@@ -58,7 +60,7 @@ class ExcelService {
       currentRow,
       1,
       currentRow,
-      10,
+      opts.includePaymentMethod ? 11 : 10,
     );
     titleRange.merge();
     titleRange.setText(reportTitle);
@@ -69,7 +71,7 @@ class ExcelService {
     currentRow += 2;
 
     // --- 2. Trip Metadata Section (출장개요) ---
-    _addMetadata(mainSheet, currentRow, project);
+    _addMetadata(mainSheet, currentRow, project, opts);
     currentRow += 5;
 
     // --- 3. Detailed Expense List (세부 지출 내역) ---
@@ -78,7 +80,7 @@ class ExcelService {
     mainSheet.getRangeByIndex(currentRow, 1).cellStyle.fontSize = 14;
     currentRow++;
 
-    _addHeader(mainSheet, currentRow);
+    _addHeader(mainSheet, currentRow, opts);
     currentRow++;
 
     List<LedgerExpense> sortedExpenses = List.from(project.expenses)
@@ -99,29 +101,44 @@ class ExcelService {
           .getRangeByIndex(row, 4)
           .setText(_getCategoryLabel(expense.category));
 
-      final localRange = mainSheet.getRangeByIndex(row, 5);
+      int currentCol = 5;
+      if (opts.includePaymentMethod) {
+        mainSheet
+            .getRangeByIndex(row, currentCol)
+            .setText(_getPaymentMethodLabel(expense.paymentMethod));
+        currentCol++;
+      }
+
+      final localRange = mainSheet.getRangeByIndex(row, currentCol++);
       localRange.setNumber(expense.amountLocal);
       localRange.numberFormat = expense.currencyCode == "KRW"
           ? "#,##0"
           : "#,##0.00";
 
-      mainSheet.getRangeByIndex(row, 6).setText(expense.currencyCode);
-      mainSheet.getRangeByIndex(row, 7).setNumber(expense.exchangeRate);
-      mainSheet.getRangeByIndex(row, 7).numberFormat = "#,##0.##";
+      mainSheet
+          .getRangeByIndex(row, currentCol++)
+          .setText(expense.currencyCode);
+      mainSheet
+          .getRangeByIndex(row, currentCol)
+          .setNumber(expense.exchangeRate);
+      mainSheet.getRangeByIndex(row, currentCol++).numberFormat = "#,##0.##";
 
-      final krwRange = mainSheet.getRangeByIndex(row, 8);
+      final krwRange = mainSheet.getRangeByIndex(row, currentCol++);
       krwRange.setNumber(expense.amountKrw.roundToDouble());
       krwRange.numberFormat = "#,##0";
 
-      mainSheet.getRangeByIndex(row, 9).setText(expense.payers.join(", "));
+      mainSheet
+          .getRangeByIndex(row, currentCol++)
+          .setText(expense.payers.join(", "));
 
-      final memoCell = mainSheet.getRangeByIndex(row, 10);
+      final memoCell = mainSheet.getRangeByIndex(row, currentCol);
       memoCell.setText(expense.memo ?? "");
       memoCell.cellStyle.wrapText = true;
       memoCell.cellStyle.vAlign = VAlignType.top;
 
+      final totalCols = opts.includePaymentMethod ? 11 : 10;
       // Add borders
-      for (int c = 1; c <= 10; c++) {
+      for (int c = 1; c <= totalCols; c++) {
         mainSheet.getRangeByIndex(row, c).cellStyle.borders.all.lineStyle =
             LineStyle.thin;
       }
@@ -175,12 +192,17 @@ class ExcelService {
     mainSheet.setColumnWidthInPixels(2, 75); // Date
     mainSheet.setColumnWidthInPixels(3, 110); // Title
     mainSheet.setColumnWidthInPixels(4, 60); // Category
-    mainSheet.setColumnWidthInPixels(5, 80); // Amount Local
-    mainSheet.setColumnWidthInPixels(6, 45); // Currency
-    mainSheet.setColumnWidthInPixels(7, 55); // Rate
-    mainSheet.setColumnWidthInPixels(8, 85); // Amount KRW
-    mainSheet.setColumnWidthInPixels(9, 80); // Payers
-    mainSheet.setColumnWidthInPixels(10, 110); // Memo (Wrapped)
+
+    int currentCol = 5;
+    if (opts.includePaymentMethod) {
+      mainSheet.setColumnWidthInPixels(currentCol++, 80); // Payment Method
+    }
+    mainSheet.setColumnWidthInPixels(currentCol++, 70); // Amount Local
+    mainSheet.setColumnWidthInPixels(currentCol++, 45); // Currency
+    mainSheet.setColumnWidthInPixels(currentCol++, 55); // Rate
+    mainSheet.setColumnWidthInPixels(currentCol++, 85); // Amount KRW
+    mainSheet.setColumnWidthInPixels(currentCol++, 80); // Payers
+    mainSheet.setColumnWidthInPixels(currentCol++, 110); // Memo (Wrapped)
 
     // 6. Create "Receipts" Sheet (Separate)
     if (opts.includeReceipts) {
@@ -203,19 +225,12 @@ class ExcelService {
     return filePath;
   }
 
-  void _addHeader(Worksheet sheet, int row) {
-    List<String> headers = [
-      "번호",
-      "날짜",
-      "내역",
-      "카테고리",
-      "금액 (현지화)",
-      "통화",
-      "환율",
-      "금액 (KRW)",
-      "사용인원",
-      "메모",
-    ];
+  void _addHeader(Worksheet sheet, int row, ExcelExportOptions opts) {
+    List<String> headers = ["번호", "날짜", "내역", "카테고리"];
+    if (opts.includePaymentMethod) {
+      headers.add("결제수단");
+    }
+    headers.addAll(["금액 (현지화)", "통화", "환율", "금액 (KRW)", "사용인원", "메모"]);
 
     for (int i = 0; i < headers.length; i++) {
       final Range range = sheet.getRangeByIndex(row, i + 1);
@@ -227,7 +242,12 @@ class ExcelService {
     }
   }
 
-  void _addMetadata(Worksheet sheet, int startRow, LedgerProject project) {
+  void _addMetadata(
+    Worksheet sheet,
+    int startRow,
+    LedgerProject project,
+    ExcelExportOptions opts,
+  ) {
     final List<List<String>> data = [
       ["프로젝트명", project.title, "정산통화", project.defaultCurrency],
       [
@@ -244,6 +264,9 @@ class ExcelService {
       ],
     ];
 
+    final int totalCols = opts.includePaymentMethod ? 11 : 10;
+    final int halfPoint = (totalCols / 2).ceil();
+
     for (int i = 0; i < data.length; i++) {
       int row = startRow + i;
 
@@ -255,22 +278,27 @@ class ExcelService {
       rangeL1.cellStyle.backColor = '#F2F2F2';
       rangeL1.cellStyle.borders.all.lineStyle = LineStyle.thin;
 
-      // Value 1 (Merged Col 3-5)
-      final rangeV1 = sheet.getRangeByIndex(row, 3, row, 5);
+      // Value 1 (Merged Col 3 to half-point)
+      final rangeV1 = sheet.getRangeByIndex(row, 3, row, halfPoint);
       rangeV1.merge();
       rangeV1.setText(data[i][1]);
       rangeV1.cellStyle.borders.all.lineStyle = LineStyle.thin;
 
-      // Label 2 (Merged Col 6-7)
-      final rangeL2 = sheet.getRangeByIndex(row, 6, row, 7);
+      // Label 2 (Merged Col half+1 to half+2)
+      final rangeL2 = sheet.getRangeByIndex(
+        row,
+        halfPoint + 1,
+        row,
+        halfPoint + 2,
+      );
       rangeL2.merge();
       rangeL2.setText(data[i][2]);
       rangeL2.cellStyle.bold = true;
       rangeL2.cellStyle.backColor = '#F2F2F2';
       rangeL2.cellStyle.borders.all.lineStyle = LineStyle.thin;
 
-      // Value 2 (Merged Col 8-10)
-      final rangeV2 = sheet.getRangeByIndex(row, 8, row, 10);
+      // Value 2 (Merged Col half+3 to totalCols)
+      final rangeV2 = sheet.getRangeByIndex(row, halfPoint + 3, row, totalCols);
       rangeV2.merge();
       rangeV2.setText(data[i][3]);
       rangeV2.cellStyle.borders.all.lineStyle = LineStyle.thin;
@@ -289,7 +317,7 @@ class ExcelService {
       {'title': "정확한 금액 (원)", 'span': 1},
       {'title': "정산 금액 (올림)", 'span': 1},
       {'title': "정산 혜택 (절상 차액)", 'span': 1},
-      {'title': "비고", 'span': 5},
+      {'title': "비고", 'span': 6},
     ];
 
     int currentCol = 1;
@@ -354,7 +382,7 @@ class ExcelService {
           .getRangeByIndex(row, 5)
           .setNumber((settlementAmount - myShareKrw).roundToDouble());
 
-      final noteRange = sheet.getRangeByIndex(row, 6, row, 10);
+      final noteRange = sheet.getRangeByIndex(row, 6, row, 11);
       noteRange.merge();
       noteRange.setText(note);
       noteRange.cellStyle.wrapText = true;
@@ -384,7 +412,7 @@ class ExcelService {
     rangeTotal.cellStyle.bold = true;
     rangeTotal.cellStyle.borders.all.lineStyle = LineStyle.thin;
 
-    final totalEmptyRange = sheet.getRangeByIndex(row, 4, row, 10);
+    final totalEmptyRange = sheet.getRangeByIndex(row, 4, row, 11);
     totalEmptyRange.merge();
     totalEmptyRange.cellStyle.borders.all.lineStyle = LineStyle.thin;
 
@@ -664,6 +692,19 @@ class ExcelService {
       case ExpenseCategory.medical:
         return "의료비";
       case ExpenseCategory.etc:
+        return "기타";
+    }
+  }
+
+  String _getPaymentMethodLabel(PaymentMethod m) {
+    switch (m) {
+      case PaymentMethod.cash:
+        return "현금";
+      case PaymentMethod.card:
+        return "카드";
+      case PaymentMethod.appPay:
+        return "앱페이";
+      case PaymentMethod.etc:
         return "기타";
     }
   }

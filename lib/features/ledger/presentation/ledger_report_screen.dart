@@ -268,6 +268,113 @@ class _LedgerReportScreenState extends ConsumerState<LedgerReportScreen> {
 
                   const SizedBox(height: 20),
 
+                  // Payment Method Pie Chart Section (NEW)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "결제수단별 지출",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
+                        ),
+                        const SizedBox(height: 30),
+                        AspectRatio(
+                          aspectRatio: 1.0,
+                          child: PieChart(
+                            PieChartData(
+                              sectionsSpace: 2,
+                              centerSpaceRadius: 35,
+                              sections: _buildPaymentMethodSections(
+                                project.expenses,
+                                totalSpentKrw,
+                                isDark,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        // Legend List for Payment Methods
+                        ..._calculatePaymentMethodSums(
+                          project.expenses,
+                        ).entries.map((e) {
+                          final method = e.key;
+                          final amountKrw = e.value;
+                          final percentage = totalSpentKrw > 0
+                              ? (amountKrw / totalSpentKrw * 100)
+                                    .toStringAsFixed(1)
+                              : "0";
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: _getPaymentMethodColor(method),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _getPaymentMethodLabel(method),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDark
+                                            ? Colors.white
+                                            : Colors.black,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      "${NumberFormat('#,###').format(amountKrw.round())}원",
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isDark
+                                            ? Colors.white54
+                                            : Colors.grey,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      "$percentage%",
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDark
+                                            ? Colors.white54
+                                            : Colors.grey[700],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
                   // Daily Trend section
                   RepaintBoundary(
                     key: _dailyChartKey,
@@ -771,6 +878,66 @@ class _LedgerReportScreenState extends ConsumerState<LedgerReportScreen> {
       case ExpenseCategory.medical:
         return "의료비";
       case ExpenseCategory.etc:
+        return "기타";
+    }
+  }
+
+  Map<PaymentMethod, double> _calculatePaymentMethodSums(
+    List<LedgerExpense> expenses,
+  ) {
+    final Map<PaymentMethod, double> sums = {};
+    for (var e in expenses) {
+      sums[e.paymentMethod] = (sums[e.paymentMethod] ?? 0) + e.amountKrw;
+    }
+    return sums;
+  }
+
+  List<PieChartSectionData> _buildPaymentMethodSections(
+    List<LedgerExpense> expenses,
+    double total,
+    bool isDark,
+  ) {
+    final sums = _calculatePaymentMethodSums(expenses);
+    return sums.entries.map((entry) {
+      final value = entry.value;
+      final percentage = total > 0 ? (value / total * 100) : 0;
+
+      return PieChartSectionData(
+        color: _getPaymentMethodColor(entry.key),
+        value: value,
+        title: '${percentage.toStringAsFixed(0)}%',
+        radius: 50,
+        titleStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      );
+    }).toList();
+  }
+
+  Color _getPaymentMethodColor(PaymentMethod m) {
+    switch (m) {
+      case PaymentMethod.cash:
+        return const Color(0xFFFF9500); // iOS Orange
+      case PaymentMethod.card:
+        return const Color(0xFF007AFF); // iOS Blue
+      case PaymentMethod.appPay:
+        return const Color(0xFF5856D6); // iOS Purple
+      case PaymentMethod.etc:
+        return const Color(0xFF8E8E93); // iOS Grey
+    }
+  }
+
+  String _getPaymentMethodLabel(PaymentMethod m) {
+    switch (m) {
+      case PaymentMethod.cash:
+        return "현금";
+      case PaymentMethod.card:
+        return "카드";
+      case PaymentMethod.appPay:
+        return "앱페이";
+      case PaymentMethod.etc:
         return "기타";
     }
   }

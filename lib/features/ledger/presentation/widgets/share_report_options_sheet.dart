@@ -44,6 +44,7 @@ class _ShareReportOptionsSheetState
   bool _includeOverview = true;
   bool _includeTotal = true;
   bool _includeCategory = true;
+  bool _includePaymentMethod = true;
   bool _includeSettlement = true;
   bool _includeBankInfo = true;
   bool _includeMessage = true;
@@ -145,6 +146,35 @@ class _ShareReportOptionsSheetState
 
         buffer.writeln(
           "- ${_getCategoryLabel(entry.key)}: $amountStr ($percentage%)",
+        );
+      }
+    }
+
+    // 3.5 Payment Method Breakdown
+    if (_includePaymentMethod) {
+      buffer.writeln("\n<결제수단별 지출>");
+      final methodSums = _calculatePaymentMethodSums(widget.project.expenses);
+      for (var entry in methodSums.entries) {
+        final amountKrw = entry.value;
+        final percentage = widget.totalSpentKrw > 0
+            ? (amountKrw / widget.totalSpentKrw * 100).toStringAsFixed(1)
+            : "0";
+
+        String amountStr = "";
+        if (_selectedCurrencyOption == 0) {
+          double amountLocal = amountKrw / widget.targetRate;
+          amountStr =
+              "${f.format(amountLocal.round())} ${widget.targetCurrencyCode}\n   (≈ ${f.format(amountKrw.round())}원)";
+        } else if (_selectedCurrencyOption == 1) {
+          double amountLocal = amountKrw / widget.targetRate;
+          amountStr =
+              "${f.format(amountLocal.round())} ${widget.targetCurrencyCode}";
+        } else {
+          amountStr = "${f.format(amountKrw.round())}원";
+        }
+
+        buffer.writeln(
+          "- ${_getPaymentMethodLabel(entry.key)}: $amountStr ($percentage%)",
         );
       }
     }
@@ -331,6 +361,13 @@ class _ShareReportOptionsSheetState
                       "카테고리별 지출",
                       _includeCategory,
                       (v) => setState(() => _includeCategory = v),
+                      isDark,
+                    ),
+                    _buildDivider(isDark),
+                    _buildSwitchRow(
+                      "결제수단별 지출",
+                      _includePaymentMethod,
+                      (v) => setState(() => _includePaymentMethod = v),
                       isDark,
                     ),
                   ],
@@ -705,6 +742,29 @@ class _ShareReportOptionsSheetState
       case ExpenseCategory.medical:
         return "의료비";
       case ExpenseCategory.etc:
+        return "기타";
+    }
+  }
+
+  Map<PaymentMethod, double> _calculatePaymentMethodSums(
+    List<LedgerExpense> expenses,
+  ) {
+    final Map<PaymentMethod, double> sums = {};
+    for (var e in expenses) {
+      sums[e.paymentMethod] = (sums[e.paymentMethod] ?? 0) + e.amountKrw;
+    }
+    return sums;
+  }
+
+  String _getPaymentMethodLabel(PaymentMethod m) {
+    switch (m) {
+      case PaymentMethod.cash:
+        return "현금";
+      case PaymentMethod.card:
+        return "카드";
+      case PaymentMethod.appPay:
+        return "앱페이";
+      case PaymentMethod.etc:
         return "기타";
     }
   }

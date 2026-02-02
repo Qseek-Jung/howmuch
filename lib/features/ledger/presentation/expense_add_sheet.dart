@@ -58,6 +58,7 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
   double _exchangeRate = 1.0;
 
   List<String> _selectedPayers = [];
+  PaymentMethod _selectedPaymentMethod = PaymentMethod.cash;
 
   // Receipt Images
   List<XFile> _receiptImages = [];
@@ -122,6 +123,7 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
               _selectedCurrency = e.currencyCode;
               _exchangeRate = e.exchangeRate;
               _selectedPayers = List.from(e.payers);
+              _selectedPaymentMethod = e.paymentMethod;
               _memoController.text = e.memo ?? "";
               _receiptImages = validReceiptPaths; // Use validated list
             });
@@ -339,7 +341,7 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
         currencyCode: _selectedCurrency,
         exchangeRate: _exchangeRate,
         amountKrw: amountKrw,
-        paymentMethod: widget.expenseToEdit!.paymentMethod,
+        paymentMethod: _selectedPaymentMethod,
         payers: _selectedPayers,
         memo: _memoController.text,
         receiptPaths: _receiptImages.map((img) => img.path).toList(),
@@ -358,7 +360,7 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
         currencyCode: _selectedCurrency,
         exchangeRate: _exchangeRate,
         amountKrw: amountKrw,
-        paymentMethod: PaymentMethod.cash,
+        paymentMethod: _selectedPaymentMethod,
         payers: _selectedPayers,
         memo: _memoController.text,
         receiptPaths: _receiptImages.map((img) => img.path).toList(),
@@ -624,6 +626,50 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
                                 ],
                               );
                             },
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Payment Method selection
+                        Text(
+                          "결제 수단",
+                          style: TextStyle(
+                            color: isDark ? Colors.white70 : Colors.black54,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : const Color(0xFFF2F2F7),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              _buildPaymentMethodItem(
+                                PaymentMethod.cash,
+                                "현금",
+                                CupertinoIcons.money_dollar_circle,
+                                isDark,
+                              ),
+                              _buildPaymentMethodItem(
+                                PaymentMethod.card,
+                                "카드",
+                                CupertinoIcons.creditcard,
+                                isDark,
+                              ),
+                              _buildPaymentMethodItem(
+                                PaymentMethod.appPay,
+                                "앱페이",
+                                CupertinoIcons.device_phone_portrait,
+                                isDark,
+                              ),
+                            ],
                           ),
                         ),
 
@@ -1033,6 +1079,65 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
       case ExpenseCategory.etc:
         return "기타";
     }
+  }
+
+  Widget _buildPaymentMethodItem(
+    PaymentMethod method,
+    String label,
+    IconData icon,
+    bool isDark,
+  ) {
+    final isSelected = _selectedPaymentMethod == method;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() => _selectedPaymentMethod = method);
+          HapticFeedback.selectionClick();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? (isDark ? Colors.white.withValues(alpha: 0.1) : Colors.white)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: isSelected && !isDark
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: isSelected
+                    ? AppColors.getPrimary(isDark)
+                    : (isDark ? Colors.white38 : Colors.grey),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected
+                      ? (isDark ? Colors.white : Colors.black)
+                      : (isDark ? Colors.white38 : Colors.grey),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showCurrencyPicker() {

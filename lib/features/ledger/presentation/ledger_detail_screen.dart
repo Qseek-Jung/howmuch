@@ -649,7 +649,22 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
         expense.amountLocal > 0 && expense.currencyCode != "KRW";
     final hasMemo = expense.memo != null && expense.memo!.isNotEmpty;
 
-    if (!hasForeignAmount && !hasMemo) return null;
+    // Get payment method label
+    String methodLabel = "";
+    switch (expense.paymentMethod) {
+      case PaymentMethod.cash:
+        methodLabel = "현금";
+        break;
+      case PaymentMethod.card:
+        methodLabel = "카드";
+        break;
+      case PaymentMethod.appPay:
+        methodLabel = "앱페이";
+        break;
+      case PaymentMethod.etc:
+        methodLabel = "기타";
+        break;
+    }
 
     String text = "";
     if (hasForeignAmount) {
@@ -657,9 +672,14 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
           "${NumberFormat('#,###.##').format(expense.amountLocal)} ${expense.currencyCode}";
     }
 
+    if (text.isNotEmpty) {
+      text += " • $methodLabel";
+    } else {
+      text = methodLabel;
+    }
+
     if (hasMemo) {
-      if (text.isNotEmpty) text += " | ";
-      text += expense.memo!;
+      text += " | ${expense.memo}";
     }
 
     return Text(

@@ -10,7 +10,7 @@ enum ExpenseCategory {
   etc, // 기타
 }
 
-enum PaymentMethod { cash, card, etc }
+enum PaymentMethod { cash, card, appPay, etc }
 
 class LedgerExpense {
   final String id;
