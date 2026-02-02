@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../core/design_system.dart';
+import '../services/remote_config_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -27,9 +29,20 @@ class _SplashScreenState extends State<SplashScreen>
 
     _fadeController.forward();
 
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) context.go('/');
-    });
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    // Start minimum timer
+    final minSplashDuration = Future.delayed(const Duration(seconds: 3));
+
+    // Fetch global settings (ads, etc.)
+    final configFetch = RemoteConfigService.instance.fetchSettings();
+
+    // Wait for both
+    await Future.wait([minSplashDuration, configFetch]);
+
+    if (mounted) context.go('/');
   }
 
   @override
@@ -58,7 +71,7 @@ class _SplashScreenState extends State<SplashScreen>
                       borderRadius: BorderRadius.circular(28),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF1A237E).withOpacity(0.08),
+                          color: AppColors.primary.withValues(alpha: 0.08),
                           blurRadius: 30,
                           offset: const Offset(0, 15),
                         ),
@@ -80,7 +93,7 @@ class _SplashScreenState extends State<SplashScreen>
                     style: TextStyle(
                       fontSize: 42,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF1A237E),
+                      color: Color(0xFF2C2C2E),
                       letterSpacing: -1.0,
                     ),
                   ),
@@ -140,7 +153,7 @@ class _SplashScreenState extends State<SplashScreen>
       text,
       style: TextStyle(
         fontSize: size,
-        color: const Color(0xFF1A237E).withOpacity(opacity),
+        color: const Color(0xFF2C2C2E).withValues(alpha: opacity),
         fontWeight: weight,
       ),
     );

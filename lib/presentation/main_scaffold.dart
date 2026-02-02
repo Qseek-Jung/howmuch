@@ -1,21 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'how_much_screen.dart';
 import 'package:exchange_flutter/features/ledger/presentation/ledger_home_screen.dart';
 
 import 'split/split_home_screen.dart';
 import '../features/exchange_rate/presentation/exchange_rate_screen.dart';
+import '../core/design_system.dart';
+import '../services/admob_service.dart';
+import '../providers/ad_settings_provider.dart';
+import 'home/currency_provider.dart';
+import 'widgets/global_banner_ad.dart';
+import 'widgets/location_auto_selector.dart';
 
-class MainScaffold extends StatefulWidget {
+class MainScaffold extends ConsumerStatefulWidget {
   const MainScaffold({super.key});
 
   @override
-  State<MainScaffold> createState() => _MainScaffoldState();
+  ConsumerState<MainScaffold> createState() => _MainScaffoldState();
 }
 
-class _MainScaffoldState extends State<MainScaffold> {
-  int _currentIndex = 0;
+class _MainScaffoldState extends ConsumerState<MainScaffold> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   final List<Widget> _pages = [
@@ -26,68 +32,143 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   @override
   Widget build(BuildContext context) {
+    final currentIndex = ref.watch(mainNavigationProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Watch ad settings to trigger rebuild when ad-free mode changes
+    ref.watch(adSettingsProvider);
+    final shouldShowAd = ref.read(adSettingsProvider.notifier).shouldShowAd();
+
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: isDark ? Colors.black : Colors.white,
       resizeToAvoidBottomInset: false,
       drawer: _buildDrawer(context),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 1. Fixed AdMob Banner (Top)
-            Container(
-              height: 50,
-              width: double.infinity,
-              color: isDark
-                  ? const Color(0xFF1C1C1E)
-                  : const Color(0xFFF3F4F6), // Slight difference from white
-              alignment: Alignment.center,
-              child: const Text(
-                "AdMob Test Banner",
-                style: TextStyle(color: Colors.grey, fontSize: 11),
-              ),
-            ),
-
-            // 2. Expanded Content Area
-            Expanded(
-              child: IndexedStack(index: _currentIndex, children: _pages),
-            ),
-
-            // 3. Bottom Toolbar (Strict Minimal Mode)
-            Container(
-              height: 56, // Fixed height per specs (48-56)
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
-                border: Border(
-                  top: BorderSide(
-                    color: isDark ? Colors.white10 : const Color(0xFFE5E7EB),
-                    width: 1,
-                  ),
+      body: LocationAutoSelector(
+        child: SafeArea(
+          child: IndexedStack(index: currentIndex, children: _pages),
+        ),
+      ),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Toolbar
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+              border: Border(
+                top: BorderSide(
+                  color: isDark ? Colors.white10 : const Color(0xFFE5E7EB),
+                  width: 1,
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildToolbarItem(
-                    3, // Index 3 for Menu
-                    Icons.menu,
-                    "메뉴",
-                  ),
-                  _buildToolbarItem(
-                    0,
-                    Icons.calculate_outlined,
-                    "얼마야",
-                  ), // Using Calculate for "How Much" calculator feel
-                  _buildToolbarItem(1, Icons.people_outline, "1/N"),
-                  _buildToolbarItem(2, Icons.receipt_long_outlined, "여계부"),
-                ],
+            ),
+            child: SafeArea(
+              top: false,
+              bottom: !shouldShowAd,
+              child: SizedBox(
+                height: 56,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildToolbarItem(3, Icons.menu, "메뉴", currentIndex),
+                    _buildToolbarItem(
+                      0,
+                      Icons.calculate_outlined,
+                      "얼마야",
+                      currentIndex,
+                    ),
+                    _buildToolbarItem(
+                      1,
+                      Icons.people_outline,
+                      "1/N",
+                      currentIndex,
+                    ),
+                    _buildToolbarItem(
+                      2,
+                      Icons.receipt_long_outlined,
+                      "여계부",
+                      currentIndex,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Global Adaptive Banner
+          const GlobalBannerAd(),
+        ],
+      ),
+    );
+  }
+
+  // ... (buildDrawer and other methods remain unchanged or slightly updated)
+
+  Widget _buildToolbarItem(
+    int index,
+    IconData icon,
+    String label,
+    int currentIndex,
+  ) {
+    final isSelected = currentIndex == index;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = isSelected
+        ? (isDark ? Colors.white : AppColors.primary)
+        : const Color(0xFF6B7280);
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          if (index == 3) {
+            _scaffoldKey.currentState?.openDrawer();
+          } else {
+            _navigateToTab(index);
+          }
+        },
+        behavior: HitTestBehavior.translucent,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 24,
+              color: index == 3
+                  ? (isDark ? Colors.white : Colors.black87)
+                  : color,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: index == 3
+                    ? (isDark ? Colors.white : Colors.black87)
+                    : color,
+                fontSize: 11,
+                fontWeight: FontWeight.normal,
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  void _navigateToTab(int index) {
+    if (index == ref.read(mainNavigationProvider)) return;
+
+    final adSettings = ref.read(adSettingsProvider.notifier);
+
+    if (adSettings.shouldShowAd()) {
+      AdMobService.instance.showInterstitialAd(
+        onAdDismissed: () {
+          if (mounted) {
+            ref.read(mainNavigationProvider.notifier).state = index;
+          }
+        },
+      );
+    } else {
+      ref.read(mainNavigationProvider.notifier).state = index;
+    }
   }
 
   Widget _buildDrawer(BuildContext context) {
@@ -114,24 +195,25 @@ class _MainScaffoldState extends State<MainScaffold> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A237E),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF1A237E).withOpacity(0.3),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    CupertinoIcons.infinite,
-                    color: Colors.white,
-                    size: 32,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withOpacity(0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Image.asset(
+                      'assets/images/icon.png',
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -191,13 +273,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                       );
                     },
                   ),
-                  _buildDrawerDivider(),
-                  _buildDrawerTile(
-                    icon: CupertinoIcons.clock_fill,
-                    title: '최근 계산 기록',
-                    subtitle: '이전 환산 결과 확인',
-                    onTap: () {},
-                  ),
+
                   _buildDrawerDivider(),
                   _buildDrawerTile(
                     icon: CupertinoIcons.cart_fill,
@@ -223,7 +299,10 @@ class _MainScaffoldState extends State<MainScaffold> {
                     icon: CupertinoIcons.question_circle_fill,
                     title: '도움말 및 문의',
                     subtitle: '사용 방법과 피드백',
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.pop(context);
+                      context.push('/help');
+                    },
                   ),
                 ],
               ),
@@ -278,7 +357,7 @@ class _MainScaffoldState extends State<MainScaffold> {
         ),
         child: Icon(
           icon,
-          color: isDark ? Colors.white : const Color(0xFF1A237E),
+          color: isDark ? Colors.white : AppColors.primary,
           size: 20,
         ),
       ),
@@ -302,56 +381,6 @@ class _MainScaffoldState extends State<MainScaffold> {
         CupertinoIcons.chevron_right,
         size: 14,
         color: isDark ? Colors.white24 : Colors.grey[400],
-      ),
-    );
-  }
-
-  Widget _buildToolbarItem(int index, IconData icon, String label) {
-    // Determine Color
-    final isSelected = _currentIndex == index;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isSelected
-        ? (isDark ? Colors.white : const Color(0xFF1A237E))
-        : const Color(0xFF6B7280);
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          if (index == 3) {
-            // Menu Logic
-            _scaffoldKey.currentState?.openDrawer();
-          } else {
-            setState(() => _currentIndex = index);
-          }
-        },
-        behavior: HitTestBehavior.translucent,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 24,
-              color: index == 3
-                  ? (Theme.of(context).brightness == Brightness.dark
-                        ? Colors.white
-                        : Colors.black87)
-                  : color,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: index == 3
-                    ? (Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : Colors.black87)
-                    : color,
-                fontSize: 11,
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/design_system.dart';
 import '../../../data/models/currency_model.dart'; // Adjust path if needed
 
 class FavoriteCurrencyChips extends StatelessWidget {
@@ -23,7 +24,7 @@ class FavoriteCurrencyChips extends StatelessWidget {
         itemCount: currencies.length,
         itemBuilder: (context, index) {
           final currency = currencies[index];
-          final isSelected = currency.code == selectedCurrency.code;
+          final isSelected = currency.uniqueId == selectedCurrency.uniqueId;
 
           return Padding(
             padding: const EdgeInsets.only(right: 8.0),
@@ -53,7 +54,7 @@ class FavoriteCurrencyChips extends StatelessWidget {
                 if (selected) onSelect(currency);
               },
               backgroundColor: Colors.white,
-              selectedColor: Colors.blueAccent,
+              selectedColor: AppColors.primary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
                 side: BorderSide(color: Colors.grey.shade300),

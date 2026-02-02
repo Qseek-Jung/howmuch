@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -11,6 +12,11 @@ import '../core/amount_recognizer.dart';
 import '../core/stt_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'shopping_helper_mode.dart';
+import 'price_scanner_mode.dart';
+import '../providers/ad_settings_provider.dart';
+import '../providers/settings_provider.dart';
+import '../services/admob_service.dart';
+import '../core/design_system.dart';
 
 class HowMuchScreen extends ConsumerStatefulWidget {
   const HowMuchScreen({super.key});
@@ -41,7 +47,11 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
   Timer? _debounceTimer;
   int _tipPercentage = 10; // Default tip
 
-  final Color _primaryColor = const Color(0xFF1A237E);
+  // Back button & Exit
+  DateTime? _lastBackPressTime;
+
+  // Use AppColors.primary (Green tone) as per design standard
+  Color get _primaryColor => AppColors.primary;
 
   @override
   void initState() {
@@ -170,6 +180,7 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
 
   void _onKeyPress(String key) {
     HapticFeedback.lightImpact();
+    SystemSound.play(SystemSoundType.click);
     _debounceTimer?.cancel();
 
     setState(() {
@@ -223,7 +234,7 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
       } else {
         // Prevent multiple dots in same segment
         if (key == '.') {
-          final segments = _inputAmount.split(RegExp(r'[+\-x/]'));
+          final segments = _inputAmount.split(RegExp(r'[+\-x/*]'));
           if (segments.last.contains('.')) return;
         }
         _inputAmount += key;
@@ -236,7 +247,7 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
   void _startAutoEvaluateTimer() {
     _debounceTimer?.cancel();
     // Only set timer if there's an operator and a second operand
-    final hasOperator = _inputAmount.contains(RegExp(r'[+\-x/]'));
+    final hasOperator = _inputAmount.contains(RegExp(r'[+\-x/*]'));
     if (!hasOperator) return;
 
     _debounceTimer = Timer(const Duration(seconds: 2), () {
@@ -262,7 +273,7 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
     try {
       // Basic sequential evaluation: 35+25-10 => (35+25)-10
       // Find the first operator and its position
-      final match = RegExp(r'([+\-x/])').firstMatch(expr);
+      final match = RegExp(r'([+\-x/*])').firstMatch(expr);
       if (match == null) return double.tryParse(expr) ?? 0;
 
       final op = match.group(0)!;
@@ -296,6 +307,8 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
   }
 
   void _applyTip() {
+    HapticFeedback.mediumImpact();
+    SystemSound.play(SystemSoundType.click);
     _evaluateImmediately(); // Ensure expression is solved first
     double? amt = double.tryParse(_inputAmount.replaceAll(',', ''));
     if (amt != null) {
@@ -394,7 +407,7 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
     if (value.isEmpty || value == "0") return "0";
 
     // If it's an expression (contains operator), don't format with commas normally, just return as is
-    if (value.contains(RegExp(r'[+\-x/]'))) return value;
+    if (value.contains(RegExp(r'[+\-x/*]'))) return value;
 
     if (isKrw) {
       double? amt = double.tryParse(value.replaceAll(',', ''));
@@ -415,6 +428,12 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
     // For conversion, evaluate the expression first to get the numeric value
     double inputVal = _calculateExpression(_inputAmount);
 
+    // Apply exchange rate correction if enabled
+    final settings = ref.read(settingsProvider);
+    if (settings.isExchangeCorrectionEnabled) {
+      rate = rate * (1 + (settings.exchangeCorrectionPercentage / 100));
+    }
+
     double res = _isReverseCalculation ? inputVal / rate : inputVal * rate;
     if (_isReverseCalculation) {
       return _formatDisplay(res.toStringAsFixed(2));
@@ -424,50 +443,61 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
   }
 
   void _showCurrencyPicker(List<Currency> favorites) {
-    if (favorites.isEmpty) return;
-    int tempIndex = 0;
+    // Filter out KRW for HowMuchScreen
+    final items = favorites.where((c) => c.code != 'KRW').toList();
+    if (items.isEmpty) return;
+
+    final selectedId = ref.read(selectedCurrencyIdProvider);
+    int tempIndex = items.indexWhere((c) => c.uniqueId == selectedId);
+    if (tempIndex == -1) tempIndex = 0;
+
     showCupertinoModalPopup(
       context: context,
       builder: (context) => Container(
         height: 300,
-        color: Colors.white,
+        padding: const EdgeInsets.only(top: 6.0),
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: Column(
           children: [
             Container(
-              color: Colors.grey[100],
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.grey[900]
+                  : Colors.grey[100],
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   CupertinoButton(
                     child: const Text(
-                      "취소",
+                      "관리",
                       style: TextStyle(color: Colors.grey),
                     ),
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      context.push(
+                        '/currency_manage',
+                        extra: {'isSelectionMode': false},
+                      );
+                    },
                   ),
                   const Text(
-                    "통화 선택",
+                    "국가(통화) 선택",
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black,
                       decoration: TextDecoration.none,
+                      color: Colors.grey,
                     ),
                   ),
                   CupertinoButton(
                     child: const Text(
                       "확인",
-                      style: TextStyle(
-                        color: Colors.blue,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     onPressed: () {
-                      final selected = favorites[tempIndex];
+                      final selected = items[tempIndex];
                       ref
-                          .read(favoriteCurrenciesProvider.notifier)
-                          .moveToTop(selected.code);
-                      _updateTipForCurrency(selected.code);
+                          .read(selectedCurrencyIdProvider.notifier)
+                          .setSelectedId(selected.uniqueId);
                       Navigator.pop(context);
                     },
                   ),
@@ -476,17 +506,23 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
             ),
             Expanded(
               child: CupertinoPicker(
+                scrollController: FixedExtentScrollController(
+                  initialItem: tempIndex,
+                ),
                 itemExtent: 44,
-                backgroundColor: Colors.white,
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
                 onSelectedItemChanged: (index) => tempIndex = index,
-                children: favorites
+                children: items
                     .map(
                       (c) => Center(
                         child: Text(
                           "${c.name} (${c.code})",
-                          style: const TextStyle(
-                            color: Colors.black,
+                          style: TextStyle(
                             fontSize: 20,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white
+                                : Colors.black,
                           ),
                         ),
                       ),
@@ -500,6 +536,14 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
     );
   }
 
+  void _swapCurrencies() {
+    HapticFeedback.mediumImpact();
+    SystemSound.play(SystemSoundType.click);
+    setState(() {
+      _isReverseCalculation = !_isReverseCalculation;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final currencyList = ref.watch(currencyListProvider);
@@ -507,21 +551,50 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
 
     return currencyList.when(
       data: (currencies) {
-        final favorites = favoriteCodes.map((code) {
+        final favorites = favoriteCodes.map((rawId) {
           return currencies.firstWhere(
-            (c) => c.code == code,
-            orElse: () => Currency(
-              code: code,
-              rateToKrw: 0,
-              name: CurrencyData.getCountryName(code),
-              updatedAt: DateTime.now(),
-            ),
+            (c) => c.uniqueId == rawId,
+            orElse: () {
+              // Fallback for missing/corrupt IDs
+              final parts = rawId.split(':');
+              String name = parts[0];
+              String code = parts.length > 1 ? parts[1] : parts[0];
+              // Support legacy format swap if necessary
+              if (parts.length > 1 &&
+                  RegExp(r'^[A-Z]{3}$').hasMatch(parts[0])) {
+                code = parts[0];
+                name = parts[1];
+              }
+              return Currency(
+                code: code,
+                name: name,
+                rateToKrw: 0,
+                updatedAt: DateTime.now(),
+              );
+            },
           );
         }).toList();
 
         if (favorites.isEmpty)
           return const Center(child: Text("Favorite is empty"));
-        final currentCurrency = favorites[0];
+
+        final selectedId = ref.watch(selectedCurrencyIdProvider);
+
+        Currency currentCurrency;
+        if (selectedId != null) {
+          currentCurrency = favorites.firstWhere(
+            (c) => c.uniqueId == selectedId,
+            orElse: () => favorites[0],
+          );
+        } else {
+          currentCurrency = favorites[0];
+          // Initialize provider if null
+          Future.microtask(
+            () => ref
+                .read(selectedCurrencyIdProvider.notifier)
+                .setSelectedId(currentCurrency.uniqueId),
+          );
+        }
 
         // Sync tip rate if currency changed from external source (e.g. Provider)
         // or on first build.
@@ -529,21 +602,89 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
           _checkAndSyncTip(currentCurrency.code);
         });
 
-        return Stack(
-          children: [
-            Column(
-              children: [
-                _buildAppBar(),
-                _buildDisplayArea(currentCurrency, favorites),
-                _buildInteractionNav(),
-                Expanded(child: _buildInteractionArea(currentCurrency.code)),
-              ],
-            ),
-          ],
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+
+            // 1. Reset input if not zero
+            if (_inputAmount != "0") {
+              setState(() => _inputAmount = "0");
+              return;
+            }
+
+            // 2. Check for double back press
+            final now = DateTime.now();
+            if (_lastBackPressTime == null ||
+                now.difference(_lastBackPressTime!) >
+                    const Duration(seconds: 2)) {
+              _lastBackPressTime = now;
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('뒤로 버튼을 한번 더 누르면 종료됩니다'),
+                    duration: Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+              return;
+            }
+
+            // 3. Show exit confirmation and ad
+            final shouldExit = await _showExitConfirmation();
+            if (shouldExit == true && mounted) {
+              final adSettings = ref.read(adSettingsProvider.notifier);
+              if (adSettings.shouldShowAd()) {
+                AdMobService.instance.showInterstitialAd(
+                  onAdDismissed: () {
+                    SystemNavigator.pop();
+                  },
+                );
+              } else {
+                SystemNavigator.pop();
+              }
+            }
+          },
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  _buildAppBar(),
+                  _buildDisplayArea(currentCurrency, favorites),
+                  _buildInteractionNav(),
+                  Expanded(child: _buildInteractionArea(currentCurrency)),
+                ],
+              ),
+            ],
+          ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, s) => Center(child: Text("Error: $e")),
+    );
+  }
+
+  /// Show exit confirmation dialog
+  Future<bool?> _showExitConfirmation() {
+    return showCupertinoDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('앱 종료'),
+        content: const Text('앱을 종료하시겠습니까?'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('종료'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -614,7 +755,7 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
                   child: Text(
                     "좌우로 밀어서 모드 전환!",
                     style: TextStyle(
-                      color: isDark ? Colors.white : const Color(0xFF1A237E),
+                      color: isDark ? Colors.white : AppColors.primary,
                       fontWeight: FontWeight.w900,
                       fontSize: 16,
                     ),
@@ -671,9 +812,11 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
           ),
           Positioned(
             child: GestureDetector(
-              onTap: () => setState(
-                () => _isReverseCalculation = !_isReverseCalculation,
-              ),
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                SystemSound.play(SystemSoundType.click);
+                _swapCurrencies();
+              },
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
@@ -773,7 +916,8 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
     );
   }
 
-  Widget _buildInteractionArea(String currencyCode) {
+  Widget _buildInteractionArea(Currency target) {
+    final currencyCode = target.code;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Stack(
       children: [
@@ -796,7 +940,17 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
                 : const BouncingScrollPhysics(),
             onPageChanged: (i) => setState(() => _currentPage = i),
             children: [
-              const Center(child: Text("Scan Mode Coming Soon")),
+              PriceScannerMode(
+                currencyCode: currencyCode,
+                onPriceScanned: (price) {
+                  setState(() {
+                    _inputAmount = price.toStringAsFixed(
+                      price == price.toInt() ? 0 : 2,
+                    );
+                  });
+                  _startAutoEvaluateTimer();
+                },
+              ),
               Container(
                 color: isDark ? Colors.transparent : Colors.white,
                 padding: const EdgeInsets.symmetric(
@@ -806,7 +960,7 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
                 child: _buildKeypad(),
               ),
               _buildVoiceMode(),
-              ShoppingHelperMode(currencyCode: currencyCode),
+              ShoppingHelperMode(uniqueId: target.uniqueId),
             ],
           ),
         ),

@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/custom_phrase.dart';
 import '../providers/custom_phrases_provider.dart';
-import '../services/translation_service.dart';
+import '../providers/ad_settings_provider.dart';
+import '../services/admob_service.dart';
+import '../core/design_system.dart';
+import 'home/currency_provider.dart'; // selectedCurrencyIdProvider가 여기에 있음
 
 class ShoppingHelperSettingsScreen extends ConsumerStatefulWidget {
   const ShoppingHelperSettingsScreen({super.key});
@@ -16,14 +20,13 @@ class ShoppingHelperSettingsScreen extends ConsumerStatefulWidget {
 
 class _ShoppingHelperSettingsScreenState
     extends ConsumerState<ShoppingHelperSettingsScreen> {
-  final TranslationService _translationService = TranslationService();
   bool _isTranslating = false;
 
   Future<void> _showAddPhraseDialog() async {
     final controller = TextEditingController();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final result = await showCupertinoDialog<String>(
+    await showCupertinoDialog<String>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
         title: const Text("문장 추가"),
@@ -52,35 +55,42 @@ class _ShoppingHelperSettingsScreenState
           CupertinoDialogAction(
             isDefaultAction: true,
             child: const Text("추가"),
-            onPressed: () => Navigator.pop(context, controller.text),
+            onPressed: () {
+              final text = controller.text.trim();
+              if (text.isNotEmpty) {
+                Navigator.pop(context);
+                final adSettings = ref.read(adSettingsProvider.notifier);
+                if (adSettings.shouldShowAd()) {
+                  _addCustomPhrase(text);
+                  AdMobService.instance.showInterstitialAd(
+                    onAdDismissed: () {},
+                  );
+                } else {
+                  _addCustomPhrase(text);
+                }
+              } else {
+                Navigator.pop(context);
+              }
+            },
           ),
         ],
       ),
     );
 
-    if (result != null && result.trim().isNotEmpty) {
-      await _addCustomPhrase(result.trim());
-    }
+    // Unified logic inside onPressed to handle ads correctly
   }
 
   Future<void> _addCustomPhrase(String koreanText) async {
     setState(() => _isTranslating = true);
 
+    final uniqueId = ref.read(selectedCurrencyIdProvider) ?? '일본:JPY';
     try {
-      // Pre-translate to common currencies
-      final translations = await _translationService.translateToMultiple(
-        koreanText,
-        ['USD', 'JPY', 'CNY', 'VND', 'THB'],
-      );
-
       await ref
-          .read(customPhrasesProvider.notifier)
-          .addPhrase(koreanText, translations: translations);
-
+          .read(customPhrasesProvider(uniqueId).notifier)
+          .addPhrase(koreanText);
       HapticFeedback.mediumImpact();
     } catch (e) {
       print('Error adding phrase: $e');
-      await ref.read(customPhrasesProvider.notifier).addPhrase(koreanText);
     } finally {
       if (mounted) setState(() => _isTranslating = false);
     }
@@ -90,7 +100,7 @@ class _ShoppingHelperSettingsScreenState
     final controller = TextEditingController(text: phrase.koreanText);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final result = await showCupertinoDialog<String>(
+    await showCupertinoDialog<String>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
         title: const Text("문장 수정"),
@@ -118,23 +128,35 @@ class _ShoppingHelperSettingsScreenState
           CupertinoDialogAction(
             isDefaultAction: true,
             child: const Text("저장"),
-            onPressed: () => Navigator.pop(context, controller.text),
+            onPressed: () {
+              final text = controller.text.trim();
+              if (text.isNotEmpty && text != phrase.koreanText) {
+                Navigator.pop(context);
+                final adSettings = ref.read(adSettingsProvider.notifier);
+                if (adSettings.shouldShowAd()) {
+                  _deletePhrase(phrase.id).then((_) => _addCustomPhrase(text));
+                  AdMobService.instance.showInterstitialAd(
+                    onAdDismissed: () {},
+                  );
+                } else {
+                  _deletePhrase(phrase.id).then((_) => _addCustomPhrase(text));
+                }
+              } else {
+                Navigator.pop(context);
+              }
+            },
           ),
         ],
       ),
     );
 
-    if (result != null &&
-        result.trim().isNotEmpty &&
-        result.trim() != phrase.koreanText) {
-      await _deletePhrase(phrase.id);
-      await _addCustomPhrase(result.trim());
-    }
+    // Unified logic inside onPressed
   }
 
   Future<void> _deletePhrase(String id) async {
+    final uniqueId = ref.read(selectedCurrencyIdProvider) ?? '일본:JPY';
     HapticFeedback.lightImpact();
-    await ref.read(customPhrasesProvider.notifier).removePhrase(id);
+    await ref.read(customPhrasesProvider(uniqueId).notifier).removePhrase(id);
   }
 
   Future<void> _confirmDelete(CustomPhrase phrase) async {
@@ -165,7 +187,8 @@ class _ShoppingHelperSettingsScreenState
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final customPhrases = ref.watch(customPhrasesProvider);
+    final uniqueId = ref.watch(selectedCurrencyIdProvider) ?? '일본:JPY';
+    final customPhrases = ref.watch(customPhrasesProvider(uniqueId));
 
     return Scaffold(
       backgroundColor: isDark ? Colors.black : const Color(0xFFF2F2F7),
@@ -227,8 +250,10 @@ class _ShoppingHelperSettingsScreenState
                   itemCount: customPhrases.length,
                   onReorder: (oldIndex, newIndex) {
                     HapticFeedback.lightImpact();
+                    final uniqueId =
+                        ref.read(selectedCurrencyIdProvider) ?? '일본:JPY';
                     ref
-                        .read(customPhrasesProvider.notifier)
+                        .read(customPhrasesProvider(uniqueId).notifier)
                         .reorderPhrases(oldIndex, newIndex);
                   },
                   itemBuilder: (context, index) {
@@ -302,7 +327,7 @@ class _ShoppingHelperSettingsScreenState
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddPhraseDialog,
-        backgroundColor: const Color(0xFF1A237E),
+        backgroundColor: AppColors.getPrimary(isDark),
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
@@ -326,52 +351,58 @@ class _CustomPhraseTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
+    return Slidable(
+      key: ValueKey(phrase.id),
+      startActionPane: ActionPane(
+        motion: const ScrollMotion(),
         children: [
-          ReorderableDragStartListener(
-            index: index,
-            child: Icon(
-              Icons.drag_handle,
-              color: isDark ? Colors.white38 : Colors.grey,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              phrase.koreanText,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: isDark ? Colors.white : Colors.black,
-                letterSpacing: -0.3,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          CupertinoButton(
-            padding: const EdgeInsets.all(8),
-            minSize: 0,
-            onPressed: onEdit,
-            child: Icon(
-              CupertinoIcons.pencil,
-              size: 18,
-              color: CupertinoColors.activeBlue,
-            ),
-          ),
-          CupertinoButton(
-            padding: const EdgeInsets.all(8),
-            minSize: 0,
-            onPressed: onDelete,
-            child: Icon(
-              CupertinoIcons.trash,
-              size: 18,
-              color: CupertinoColors.destructiveRed,
-            ),
+          SlidableAction(
+            onPressed: (context) => onDelete(),
+            backgroundColor: CupertinoColors.destructiveRed,
+            foregroundColor: Colors.white,
+            icon: CupertinoIcons.trash,
+            label: '삭제',
           ),
         ],
+      ),
+      endActionPane: ActionPane(
+        motion: const ScrollMotion(),
+        children: [
+          SlidableAction(
+            onPressed: (context) => onEdit(),
+            backgroundColor: CupertinoColors.activeBlue,
+            foregroundColor: Colors.white,
+            icon: CupertinoIcons.pencil,
+            label: '수정',
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            ReorderableDragStartListener(
+              index: index,
+              child: Icon(
+                Icons.drag_handle,
+                color: isDark ? Colors.white38 : Colors.grey,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                phrase.koreanText,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.white : Colors.black,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'package:uuid/uuid.dart';
 import 'ledger_expense.dart';
 import 'ledger_sub_project.dart';
 
@@ -11,6 +9,7 @@ class LedgerProject {
   final List<String> countries; // Currency codes managed
   final List<String> members; // "Me", "Friend A"...
   final String defaultCurrency;
+  final String tripPurpose; // "여행" or "출장"
   final List<LedgerExpense> expenses;
   final List<LedgerSubProject> subProjects;
 
@@ -22,6 +21,7 @@ class LedgerProject {
     required this.countries,
     required this.members,
     required this.defaultCurrency,
+    this.tripPurpose = "여행",
     required this.expenses,
     this.subProjects = const [],
   });
@@ -35,6 +35,7 @@ class LedgerProject {
       'countries': countries,
       'members': members,
       'defaultCurrency': defaultCurrency,
+      'tripPurpose': tripPurpose,
       'expenses': expenses.map((e) => e.toJson()).toList(),
       'subProjects': subProjects.map((s) => s.toJson()).toList(),
     };
@@ -49,6 +50,7 @@ class LedgerProject {
       countries: List<String>.from(json['countries']),
       members: List<String>.from(json['members']),
       defaultCurrency: json['defaultCurrency'],
+      tripPurpose: json['tripPurpose'] ?? "여행",
       expenses:
           (json['expenses'] as List?)
               ?.map((e) => LedgerExpense.fromJson(e))
@@ -69,6 +71,7 @@ class LedgerProject {
     List<String>? countries,
     List<String>? members,
     String? defaultCurrency,
+    String? tripPurpose,
     List<LedgerExpense>? expenses,
     List<LedgerSubProject>? subProjects,
   }) {
@@ -80,6 +83,7 @@ class LedgerProject {
       countries: countries ?? this.countries,
       members: members ?? this.members,
       defaultCurrency: defaultCurrency ?? this.defaultCurrency,
+      tripPurpose: tripPurpose ?? this.tripPurpose,
       expenses: expenses ?? this.expenses,
       subProjects: subProjects ?? this.subProjects,
     );

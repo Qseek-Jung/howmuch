@@ -3,12 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'home/currency_provider.dart';
+import '../../core/design_system.dart';
 
 import '../../data/models/currency_model.dart';
+import '../../core/currency_data.dart';
 
 class CurrencyManageScreen extends ConsumerStatefulWidget {
   final bool isSelectionMode;
-  const CurrencyManageScreen({super.key, this.isSelectionMode = false});
+  final String? initialSelectedId;
+  final bool excludeKrw;
+
+  const CurrencyManageScreen({
+    super.key,
+    this.isSelectionMode = false,
+    this.initialSelectedId,
+    this.excludeKrw = false,
+  });
 
   @override
   ConsumerState<CurrencyManageScreen> createState() =>
@@ -25,6 +35,8 @@ class _CurrencyManageScreenState extends ConsumerState<CurrencyManageScreen> {
   List<dynamic> _displayList = []; // Can be String (Header) or Currency
   Map<String, int> _indexOffsets = {};
   List<String> _indexChars = [];
+
+  bool _scrolledToInitial = false;
 
   @override
   void initState() {
@@ -86,17 +98,34 @@ class _CurrencyManageScreenState extends ConsumerState<CurrencyManageScreen> {
       final q = _searchQuery.trim().toLowerCase();
       if (q.isEmpty) return true;
       return c.name.toLowerCase().contains(q) ||
-          c.code.toLowerCase().contains(q);
+          c.code.toLowerCase().contains(q) ||
+          (c.countryEn?.toLowerCase().contains(q) ?? false) ||
+          (c.currencyName?.toLowerCase().contains(q) ?? false);
     }).toList();
 
     // Separation
     final favorites = <Currency>[];
     final others = <Currency>[];
 
+    // Build favorites in the order they appear in favoriteCodes
+    for (var code in favoriteCodes) {
+      final match = filtered.cast<Currency?>().firstWhere(
+        (c) => c?.uniqueId == code,
+        orElse: () => null,
+      );
+      if (match != null) {
+        favorites.add(match);
+      }
+    }
+
+    // Others: Filtered items that are NOT in favorites
     for (var c in filtered) {
-      if (favoriteCodes.contains(c.code)) {
-        favorites.add(c);
-      } else {
+      // Filter out Korea if requested (only checking strictly by code/name)
+      if (widget.excludeKrw && (c.code == 'KRW' || c.name == '대한민국')) {
+        continue;
+      }
+
+      if (!favoriteCodes.contains(c.uniqueId)) {
         others.add(c);
       }
     }
@@ -178,41 +207,90 @@ class _CurrencyManageScreenState extends ConsumerState<CurrencyManageScreen> {
     final favoriteCodes = ref.watch(favoriteCurrenciesProvider);
     final notifier = ref.read(favoriteCurrenciesProvider.notifier);
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
           widget.isSelectionMode ? "국가 선택" : "국가 즐겨찾기 관리",
-          style: const TextStyle(
-            color: Color(0xFF1A237E),
+          style: TextStyle(
+            color: isDark ? Colors.white : AppColors.primary,
             fontWeight: FontWeight.w800,
           ),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black87),
-          onPressed: () => context.pop(),
+          icon: Icon(
+            Icons.arrow_back_ios_new,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          onPressed: () {
+            if (_searchQuery.isNotEmpty) {
+              _searchController.clear();
+              setState(() {
+                _searchQuery = "";
+              });
+            } else {
+              context.pop();
+            }
+          },
         ),
       ),
       body: currencyListAsync.when(
         data: (allCurrencies) {
           _prepareData(allCurrencies, favoriteCodes);
 
+          _prepareData(allCurrencies, favoriteCodes);
+
+          // Auto Scroll Logic
+          if (!_scrolledToInitial && widget.initialSelectedId != null) {
+            _scrolledToInitial = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              int targetIndex = -1;
+              for (int i = 0; i < _displayList.length; i++) {
+                final item = _displayList[i];
+                if (item['type'] == 'ITEM' &&
+                    item['data'].uniqueId == widget.initialSelectedId) {
+                  targetIndex = i;
+                  break;
+                }
+                // Favorites Block check
+                if (item['type'] == 'FAVORITES_BLOCK') {
+                  final List<Currency> favs = item['data'];
+                  if (favs.any((f) => f.uniqueId == widget.initialSelectedId)) {
+                    targetIndex = i; // Scroll to block
+                    break;
+                  }
+                }
+              }
+              if (targetIndex != -1 && _itemScrollController.isAttached) {
+                // Scroll with offset to center it roughly
+                _itemScrollController.scrollTo(
+                  index: targetIndex,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  alignment: 0.1, // Near top but with padding
+                );
+              }
+            });
+          }
+
           return Column(
             children: [
               // Search
               Container(
-                color: Colors.white,
+                color: Theme.of(context).cardColor,
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: TextField(
                   controller: _searchController,
                   onChanged: (val) => setState(() => _searchQuery = val),
                   decoration: InputDecoration(
                     hintText: "국가 또는 통화 검색",
-                    prefixIcon: const Icon(
+                    prefixIcon: Icon(
                       Icons.search,
-                      color: Color(0xFF1A237E),
+                      color: isDark ? Colors.white70 : AppColors.primary,
                     ),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
@@ -221,7 +299,9 @@ class _CurrencyManageScreenState extends ConsumerState<CurrencyManageScreen> {
                           )
                         : null,
                     filled: true,
-                    fillColor: const Color(0xFFF3F4F6),
+                    fillColor: isDark
+                        ? Colors.grey[800]
+                        : const Color(0xFFF3F4F6),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
                       borderSide: BorderSide.none,
@@ -266,7 +346,7 @@ class _CurrencyManageScreenState extends ConsumerState<CurrencyManageScreen> {
                           // Or I just render them. The user said "Keep existing favorites at top".
                           // I will render them as a block.
                           return Container(
-                            color: Colors.white,
+                            color: Theme.of(context).cardColor,
                             margin: const EdgeInsets.only(bottom: 8),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,34 +354,108 @@ class _CurrencyManageScreenState extends ConsumerState<CurrencyManageScreen> {
                                 const Padding(
                                   padding: EdgeInsets.all(16),
                                   child: Text(
-                                    "나의 즐겨찾기",
+                                    "나의 즐겨찾기 (밀어서 순서 변경)",
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16,
                                     ),
                                   ),
                                 ),
-                                ...favs.map(
-                                  (c) => ListTile(
-                                    title: Text(c.name),
-                                    subtitle: Text(c.code),
-                                    onTap: widget.isSelectionMode
-                                        ? () => Navigator.pop(context, {
-                                            'currency': c.code,
-                                            'name': c.name,
-                                          })
-                                        : null,
-                                    trailing: widget.isSelectionMode
-                                        ? null
-                                        : IconButton(
-                                            icon: const Icon(
-                                              Icons.remove_circle,
-                                              color: Colors.red,
+                                ReorderableListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  buildDefaultDragHandles: false,
+                                  itemCount: favs.length,
+                                  onReorder: (oldIndex, newIndex) {
+                                    notifier.reorder(oldIndex, newIndex);
+                                  },
+                                  itemBuilder: (context, index) {
+                                    final c = favs[index];
+                                    return Container(
+                                      key: ValueKey(c.uniqueId),
+                                      color: Theme.of(context).cardColor,
+                                      child: ListTile(
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 4,
                                             ),
-                                            onPressed: () =>
-                                                notifier.removeFavorite(c.code),
+                                        // 1. Sandwich Drag Handle (Left)
+                                        leading: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            ReorderableDragStartListener(
+                                              index: index,
+                                              child: Container(
+                                                padding: const EdgeInsets.only(
+                                                  right: 16,
+                                                  top: 8,
+                                                  bottom: 8,
+                                                ),
+                                                color: Colors
+                                                    .transparent, // Hit test
+                                                child: Icon(
+                                                  Icons.menu,
+                                                  color: isDark
+                                                      ? Colors.grey[400]
+                                                      : Colors.grey[500],
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              CurrencyData.getFlag(c.name),
+                                              style: const TextStyle(
+                                                fontSize: 28,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        title: Text(
+                                          "${c.name} (${c.code})",
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
                                           ),
-                                  ),
+                                        ),
+                                        subtitle: Text(
+                                          c.countryEn ?? '',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface
+                                                    .withOpacity(0.7),
+                                              ),
+                                        ),
+                                        // If selection mode, tap selects.
+                                        // If NOT selection mode, tap does nothing (or shows detail?), trailing removes.
+                                        onTap: widget.isSelectionMode
+                                            ? () => Navigator.pop(context, {
+                                                'currency': c.code,
+                                                'name': c.name,
+                                                'uniqueId': c.uniqueId,
+                                              })
+                                            : null,
+                                        trailing: widget.isSelectionMode
+                                            ? (c.uniqueId ==
+                                                      widget.initialSelectedId
+                                                  ? Icon(
+                                                      Icons.check,
+                                                      color: AppColors.primary,
+                                                    )
+                                                  : null)
+                                            : IconButton(
+                                                icon: const Icon(
+                                                  Icons.remove_circle,
+                                                  color: Colors.red,
+                                                ),
+                                                onPressed: () => notifier
+                                                    .removeFavorite(c.uniqueId),
+                                              ),
+                                      ),
+                                    );
+                                  },
                                 ),
                               ],
                             ),
@@ -314,12 +468,16 @@ class _CurrencyManageScreenState extends ConsumerState<CurrencyManageScreen> {
                               horizontal: 16,
                               vertical: 8,
                             ),
-                            color: const Color(0xFFF3F4F6),
+                            color: isDark
+                                ? Colors.grey[900]
+                                : const Color(0xFFF3F4F6),
                             child: Text(
                               item['title'],
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF1A237E),
+                                color: isDark
+                                    ? Colors.white
+                                    : AppColors.primary,
                               ),
                             ),
                           );
@@ -327,18 +485,37 @@ class _CurrencyManageScreenState extends ConsumerState<CurrencyManageScreen> {
 
                         if (type == 'ITEM') {
                           final Currency c = item['data'];
-                          final isSelected = favoriteCodes.contains(c.code);
+                          final isSelected = favoriteCodes.contains(c.uniqueId);
                           return Container(
-                            color: Colors.white,
+                            color: Theme.of(context).cardColor,
                             child: ListTile(
-                              title: Text(c.name),
-                              subtitle: Text(c.code),
+                              leading: Text(
+                                CurrencyData.getFlag(c.name),
+                                style: const TextStyle(fontSize: 28),
+                              ),
+                              title: Text(
+                                "${c.name} (${c.code})",
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Text(
+                                c.countryEn ?? '',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface.withOpacity(0.7),
+                                    ),
+                              ),
                               trailing: widget.isSelectionMode
                                   ? null
                                   : (isSelected
-                                        ? const Icon(
+                                        ? Icon(
                                             Icons.check_circle,
-                                            color: Color(0xFF1A237E),
+                                            color: isDark
+                                                ? Colors.greenAccent
+                                                : AppColors.primary,
                                           )
                                         : const Icon(
                                             Icons.add_circle_outline,
@@ -349,12 +526,22 @@ class _CurrencyManageScreenState extends ConsumerState<CurrencyManageScreen> {
                                   Navigator.pop(context, {
                                     'currency': c.code,
                                     'name': c.name,
+                                    'uniqueId': c.uniqueId,
                                   });
                                 } else {
-                                  if (!isSelected)
-                                    notifier.addFavorite(c.code);
-                                  else
-                                    notifier.removeFavorite(c.code);
+                                  bool wasSearch = _searchQuery.isNotEmpty;
+                                  if (!isSelected) {
+                                    notifier.addFavorite(c.uniqueId);
+                                    // User requested: After selecting searched item, go to favorite manage page (list view)
+                                    if (wasSearch) {
+                                      _searchController.clear();
+                                      setState(() {
+                                        _searchQuery = "";
+                                      });
+                                    }
+                                  } else {
+                                    notifier.removeFavorite(c.uniqueId);
+                                  }
                                 }
                               },
                             ),
@@ -376,7 +563,9 @@ class _CurrencyManageScreenState extends ConsumerState<CurrencyManageScreen> {
                               horizontal: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.8),
+                              color: isDark
+                                  ? Colors.grey[800]!.withValues(alpha: 0.8)
+                                  : Colors.white.withOpacity(0.8),
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Column(
@@ -398,10 +587,12 @@ class _CurrencyManageScreenState extends ConsumerState<CurrencyManageScreen> {
                                     ),
                                     child: Text(
                                       char,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1A237E),
+                                        color: isDark
+                                            ? Colors.white
+                                            : AppColors.primary,
                                       ),
                                     ),
                                   ),

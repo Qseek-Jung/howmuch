@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'; // 한글 로케일 지원
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'core/constants.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
 import 'providers/settings_provider.dart';
+import 'services/admob_service.dart';
+import 'services/remote_config_service.dart';
 
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -19,6 +23,15 @@ void main() async {
     url: Constants.supabaseUrl,
     anonKey: Constants.supabaseAnonKey,
   );
+
+  // Fetch remote configuration (ads control, etc.)
+  await RemoteConfigService.instance.fetchSettings();
+
+  // Initialize AdMob
+  await MobileAds.instance.initialize();
+
+  // Load first interstitial ad
+  AdMobService.instance.loadInterstitialAd();
 
   // TODO: Initialize Kakao SDK here
   // KakaoSdk.init(nativeAppKey: Constants.kakaoNativeAppKey);
@@ -41,6 +54,17 @@ class MyApp extends ConsumerWidget {
       themeMode: settings.themeMode,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
+      // 🇰🇷 한글 로케일 지원
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('ko', 'KR'), // 한국어
+        Locale('en', 'US'), // 영어
+      ],
+      locale: const Locale('ko', 'KR'), // 기본 언어: 한국어
     );
   }
 }

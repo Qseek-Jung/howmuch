@@ -1,114 +1,110 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/currency_model.dart';
 import '../../core/currency_data.dart';
 
 class CurrencyRepository {
   final SupabaseClient _supabase;
+  List<Currency>? _cachedRates;
 
   CurrencyRepository(this._supabase);
 
-  // 1. Fetch Rates from Supabase (Table: exchange_rates)
-  // Schema assumption: code (text), rate_to_krw (numeric), last_updated (timestamp)
-  // Or maybe a single JSON blob?
-  // User said: "Supabase updates rates hourly".
-  // Simplest: A table `exchange_rates` with `code` and `rate`. Base is KRW?
-  // Or Base is EUR (Frankfurter default).
-  // If user wants "All currencies from Frankfurter", calculating KRW rate requires:
-  // KRW rate = (1 / EUR_to_KRW) * EUR_to_Target?
-  // Let's assume the Supabase table contains pre-calculated 'rate_to_krw' OR standard rates.
-  // I will implement a fetch that tries to get `rate_to_krw` from Supabase.
-  // If failure, fallbacks to Frankfurter API (Client side).
-
+  // Fetch rates exclusively from Supabase DB ('fx_latest_cache')
   Future<List<Currency>> fetchBriefRates() async {
+    // 1. Return memory cache if available
+    if (_cachedRates != null && _cachedRates!.isNotEmpty) {
+      return _cachedRates!;
+    }
+
+    // 2. Try loading from SharedPreferences immediate arrival
+    final prefs = await SharedPreferences.getInstance();
+    final String? localRaw = prefs.getString('local_cached_rates');
+    if (localRaw != null) {
+      try {
+        final List<dynamic> jsonList = jsonDecode(localRaw);
+        final localList = jsonList.map((j) => Currency.fromJson(j)).toList();
+        if (localList.isNotEmpty) {
+          _cachedRates = localList;
+          // Return local cache but continue to fetch fresh data in background if needed
+          // For now, we return and trigger background fetch by not returning early here
+          // but we want the UI to have SOMETHING immediately.
+          // Better approach: allow UI to see the local data first.
+        }
+      } catch (e) {
+        print("[ERROR] Local cache parse error: $e");
+      }
+    }
+
     try {
-      // Fetch from fx_latest_cache (Base KRW)
+      print("[DEBUG] fetching fx_latest_cache...");
       final response = await _supabase
           .from('fx_latest_cache')
-          .select('rates')
-          .eq('base_currency', 'KRW')
+          .select()
+          .eq('base', 'KRW')
           .maybeSingle();
 
       if (response != null && response['rates'] != null) {
-        final ratesJson = response['rates'] as Map<String, dynamic>;
-
-        // Convert to list
+        final ratesMap = Map<String, dynamic>.from(response['rates']);
         List<Currency> list = [];
-        ratesJson.forEach((code, rate) {
-          // rate is KRW -> Target? or Target -> KRW?
-          // fx_latest_cache for Base KRW usually means: 1 KRW = x Target
-          // e.g. KRW/USD = 0.00075
-          // We want RateToKRW: 1 Target = y KRW => y = 1/x
 
-          double rateVal = (rate as num).toDouble();
-          double rateToKrw = rateVal == 0 ? 0 : (1 / rateVal);
+        for (var country in CurrencyData.allCountries) {
+          final code = country['currency']!;
+          final flagCode = country['flag'];
 
-          list.add(
-            Currency(
-              code: code,
-              rateToKrw: rateToKrw,
-              name: CurrencyData.getCountryName(code),
-              updatedAt: DateTime.now(),
-            ),
+          dynamic val = ratesMap[code];
+          if (val == null && flagCode != null) val = ratesMap[flagCode];
+          if (val == null && code.length >= 2)
+            val = ratesMap[code.substring(0, 2)];
+
+          if (val != null && val is num && val != 0) {
+            final inverseRate = 1 / val.toDouble();
+            list.add(
+              Currency(
+                code: code,
+                name: country['countryKR']!,
+                countryEn: country['countryEN'],
+                currencyName: CurrencyData.currencyNames[code],
+                flagCode: country['flag'],
+                rateToKrw: inverseRate,
+                updatedAt: DateTime.now(),
+              ),
+            );
+          } else if (code == 'KRW') {
+            list.add(
+              Currency(
+                code: 'KRW',
+                name: country['countryKR']!,
+                countryEn: country['countryEN'],
+                currencyName: CurrencyData.currencyNames[code],
+                flagCode: country['flag'],
+                rateToKrw: 1.0,
+                updatedAt: DateTime.now(),
+              ),
+            );
+          }
+        }
+
+        if (list.isNotEmpty) {
+          list.sort((a, b) => a.name.compareTo(b.name));
+          _cachedRates = list;
+
+          // 3. Persist to SharedPreferences for next startup
+          final String encoded = jsonEncode(
+            list.map((c) => c.toJson()).toList(),
           );
-        });
+          await prefs.setString('local_cached_rates', encoded);
 
-        // Sort by Code
-        list.sort((a, b) => a.code.compareTo(b.code));
-        return list;
+          return list;
+        }
       }
     } catch (e) {
-      print("Supabase fx_latest_cache error: $e");
+      print("[ERROR] Supabase fetch error: $e");
     }
 
-    // Fallback or Initial implementation: Frankfurter API via HTTP
-    return await fetchFromFrankfurter();
-  }
+    // Fallback to local cache if network failed but we had it
+    if (_cachedRates != null) return _cachedRates!;
 
-  Future<List<Currency>> fetchFromFrankfurter() async {
-    // 1. Get List of Currencies
-    // 2. Get Rates (Base KRW? Frankfurter doesn't support KRW as base for free?
-    // Actually Frankfurter base is EUR.
-    // We need EUR -> KRW and EUR -> Others.
-    // Target Rate (KRW based) = (EUR_to_Target) / (EUR_to_KRW).
-
-    try {
-      final url = Uri.parse('https://api.frankfurter.app/latest?from=EUR');
-      final res = await http.get(url);
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final rates = data['rates'] as Map<String, dynamic>;
-        rates['EUR'] = 1.0; // Base
-
-        if (!rates.containsKey('KRW')) return [];
-
-        double eurToKrw = (rates['KRW'] as num).toDouble();
-
-        List<Currency> list = [];
-        rates.forEach((code, rateVal) {
-          double eurToTarget = (rateVal as num).toDouble();
-          // 1 Target = ? KRW
-          // 1 EUR = eurToKrw KRW
-          // 1 EUR = eurToTarget Target
-          // => eurToTarget Target = eurToKrw KRW
-          // => 1 Target = (eurToKrw / eurToTarget) KRW
-          double rateToKrw = eurToKrw / eurToTarget;
-
-          list.add(
-            Currency(
-              code: code,
-              rateToKrw: rateToKrw,
-              name: CurrencyData.getCountryName(code),
-              updatedAt: DateTime.now(),
-            ),
-          );
-        });
-        return list;
-      }
-    } catch (e) {
-      print("Frankfurter API error: $e");
-    }
     return [];
   }
 }

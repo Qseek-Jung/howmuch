@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/ledger_project.dart';
 import '../models/ledger_expense.dart';
-import 'package:uuid/uuid.dart';
+import '../services/excel_service.dart';
 
 // Key for SharedPreferences
 const String _ledgerStorageKey = 'ledger_projects_v1';
@@ -12,6 +12,10 @@ final ledgerProvider =
     StateNotifierProvider<LedgerNotifier, List<LedgerProject>>((ref) {
       return LedgerNotifier();
     });
+
+final excelServiceProvider = Provider<ExcelService>((ref) {
+  return ExcelService();
+});
 
 class LedgerNotifier extends StateNotifier<List<LedgerProject>> {
   LedgerNotifier() : super([]) {

@@ -1,25 +1,46 @@
 import 'package:flutter/material.dart';
+import 'design_system.dart';
 
 class AppTheme {
   static final lightTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: const Color(0xFF1A237E),
+      seedColor: AppColors.primary,
       brightness: Brightness.light,
-      surface: Colors.white,
+      surface: AppColors.surfaceLight,
     ),
-    scaffoldBackgroundColor: const Color(0xFFF2F2F7),
+    scaffoldBackgroundColor: AppColors.backgroundLight,
     appBarTheme: const AppBarTheme(
       centerTitle: true,
       elevation: 0,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surfaceLight,
       foregroundColor: Colors.black,
     ),
     cardTheme: CardThemeData(
-      color: Colors.white,
+      color: AppColors.surfaceLight,
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesign.cardRadius),
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: AppDesign.primaryButtonStyle(isDark: false),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(double.infinity, 56),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDesign.buttonRadius),
+        ),
+        side: const BorderSide(color: AppColors.primary),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.primary,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      ),
     ),
   );
 
@@ -27,21 +48,41 @@ class AppTheme {
     useMaterial3: true,
     brightness: Brightness.dark,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: const Color(0xFF1A237E),
+      seedColor: AppColors.primary,
       brightness: Brightness.dark,
-      surface: const Color(0xFF1C1C1E),
+      surface: AppColors.surfaceDark,
     ),
-    scaffoldBackgroundColor: Colors.black,
+    scaffoldBackgroundColor: AppColors.backgroundDark,
     appBarTheme: const AppBarTheme(
       centerTitle: true,
       elevation: 0,
-      backgroundColor: Color(0xFF1C1C1E),
+      backgroundColor: AppColors.surfaceDark,
       foregroundColor: Colors.white,
     ),
     cardTheme: CardThemeData(
-      color: const Color(0xFF1C1C1E),
+      color: AppColors.surfaceDark,
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesign.cardRadius),
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: AppDesign.primaryButtonStyle(isDark: true),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(double.infinity, 56),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDesign.buttonRadius),
+        ),
+        side: const BorderSide(color: Colors.white24),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.primary,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      ),
     ),
   );
 }

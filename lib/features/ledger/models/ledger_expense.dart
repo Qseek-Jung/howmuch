@@ -4,6 +4,9 @@ enum ExpenseCategory {
   transport, // 교통
   shopping, // 쇼핑
   tour, // 관광
+  golf, // 골프
+  activity, // 액티비티
+  medical, // 의료비
   etc, // 기타
 }
 
@@ -21,7 +24,7 @@ class LedgerExpense {
   final PaymentMethod paymentMethod;
   final List<String> payers; // List of member names who share this cost
   final String? memo;
-  final String? receiptPath; // Local path to image
+  final List<String> receiptPaths; // Local paths to images
 
   LedgerExpense({
     required this.id,
@@ -35,7 +38,7 @@ class LedgerExpense {
     required this.paymentMethod, // Default cash if not provided logic handled in UI
     required this.payers,
     this.memo,
-    this.receiptPath,
+    required this.receiptPaths,
   });
 
   Map<String, dynamic> toJson() {
@@ -51,7 +54,7 @@ class LedgerExpense {
       'paymentMethod': paymentMethod.index,
       'payers': payers,
       'memo': memo,
-      'receiptPath': receiptPath,
+      'receiptPaths': receiptPaths,
     };
   }
 
@@ -68,7 +71,10 @@ class LedgerExpense {
       paymentMethod: PaymentMethod.values[json['paymentMethod'] ?? 0],
       payers: List<String>.from(json['payers'] ?? []),
       memo: json['memo'],
-      receiptPath: json['receiptPath'],
+      receiptPaths: List<String>.from(
+        json['receiptPaths'] ??
+            (json['receiptPath'] != null ? [json['receiptPath']] : []),
+      ),
     );
   }
 }

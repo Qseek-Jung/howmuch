@@ -1,14 +1,21 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../home/currency_provider.dart';
 import 'split_provider.dart';
+import '../../providers/settings_provider.dart';
 import 'split_report_screen.dart';
 import '../../core/split_logic.dart';
 import '../../data/models/split_bill_model.dart';
+import '../../data/models/currency_model.dart';
+import '../../features/ledger/providers/ledger_provider.dart';
+import '../../features/ledger/presentation/expense_add_sheet.dart';
+import '../../core/design_system.dart';
+import '../widgets/horizontal_dial_picker.dart';
 
 class SplitHomeScreen extends ConsumerStatefulWidget {
   const SplitHomeScreen({super.key});
@@ -32,17 +39,54 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Reset input when navigating away (index 1 is SplitHomeScreen)
+    ref.listen<int>(mainNavigationProvider, (previous, next) {
+      if (previous == 1 && next != 1) {
+        _amountController.clear();
+      }
+    });
+
     final history = ref.watch(splitHistoryProvider);
     final currencyList = ref.watch(currencyListProvider).value ?? [];
     final favoriteCodes = ref.watch(favoriteCurrenciesProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Get the first favorite as the effective target currency
-    final targetCurrency = favoriteCodes.isNotEmpty
-        ? currencyList.where((c) => c.code == favoriteCodes[0]).firstOrNull
-        : null;
+    // Determine target currency from shared provider or fallback to first favorite
+    final selectedId = ref.watch(selectedCurrencyIdProvider);
+    final targetCurrency = (selectedId != null)
+        ? currencyList.where((c) => c.uniqueId == selectedId).firstOrNull
+        : (favoriteCodes.isNotEmpty
+              ? currencyList
+                    .where((c) => c.uniqueId == favoriteCodes[0])
+                    .firstOrNull
+              : null);
     final targetCode = targetCurrency?.code ?? 'USD';
+
+    final favorites = favoriteCodes.map((key) {
+      return currencyList.firstWhere(
+        (c) => c.uniqueId == key,
+        orElse: () {
+          final parts = key.split(':');
+          // New format: Name:Code. parts[0] is Name, parts[1] is Code.
+          String name = parts[0];
+          String code = parts.length > 1 ? parts[1] : parts[0];
+          // Support migration/fallback if needed
+          if (parts.length > 1 && RegExp(r'^[A-Z]{3}$').hasMatch(parts[0])) {
+            code = parts[0];
+            name = parts[1];
+          }
+          return Currency(
+            code: code,
+            name: name,
+            rateToKrw: 0,
+            updatedAt: DateTime.now(),
+          );
+        },
+      );
+    }).toList();
+
     final f = NumberFormat('#,###');
+    final settings = ref.watch(settingsProvider);
 
     // Calculate mirror value
     double inputVal = 0;
@@ -52,11 +96,16 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
 
     String mirrorValue = "";
     if (inputVal > 0 && targetCurrency != null) {
+      double rate = targetCurrency.rateToKrw;
+      if (settings.isExchangeCorrectionEnabled) {
+        rate = rate * (1 + (settings.exchangeCorrectionPercentage / 100));
+      }
+
       if (_isKrwInput) {
-        double localVal = inputVal / targetCurrency.rateToKrw;
+        double localVal = inputVal / rate;
         mirrorValue = "${f.format(localVal.toInt())} $targetCode";
       } else {
-        double krwVal = inputVal * targetCurrency.rateToKrw;
+        double krwVal = inputVal * rate;
         mirrorValue = "${f.format(krwVal.toInt())} KRW";
       }
     }
@@ -64,7 +113,9 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: isDark ? Colors.black : const Color(0xFFF2F2F7),
+        backgroundColor: isDark
+            ? AppColors.backgroundDark
+            : AppColors.backgroundLight,
         resizeToAvoidBottomInset: false,
         body: Column(
           children: [
@@ -75,7 +126,9 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
                   // 1. Input Header (Clean White Style)
                   SliverToBoxAdapter(
                     child: Container(
-                      color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                      color: isDark
+                          ? AppColors.surfaceDark
+                          : AppColors.surfaceLight,
                       padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -93,7 +146,10 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
                                       : CupertinoColors.secondaryLabel,
                                 ),
                               ),
-                              _buildCurrencySegmentedControl(targetCode),
+                              _buildCurrencySegmentedControl(
+                                targetCode,
+                                favorites,
+                              ),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -145,7 +201,7 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
                           // 1. People Count Picker
                           _buildPickerSection(
                             label: "정산 인원",
-                            content: _HorizontalDialPicker<int>(
+                            content: HorizontalDialPicker<int>(
                               items: List.generate(49, (i) => i + 2),
                               selectedValue: _peopleCount,
                               onChanged: (val) =>
@@ -161,7 +217,7 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
                                           : FontWeight.w500,
                                       color:
                                           (isDark ? Colors.white : Colors.black)
-                                              .withOpacity(opacity),
+                                              .withValues(alpha: opacity),
                                       letterSpacing: -1.0,
                                     ),
                                   ),
@@ -172,7 +228,7 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
                           // 2. Rounding Unit Picker
                           _buildPickerSection(
                             label: "올림 단위",
-                            content: _HorizontalDialPicker<int>(
+                            content: HorizontalDialPicker<int>(
                               items: const [
                                 1,
                                 10,
@@ -197,7 +253,7 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
                                         : FontWeight.w500,
                                     color:
                                         (isDark ? Colors.white : Colors.black)
-                                            .withOpacity(opacity),
+                                            .withValues(alpha: opacity),
                                     letterSpacing: -0.5,
                                   ),
                                 );
@@ -221,7 +277,7 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
 
                   // 4. History Header
                   if (history.isNotEmpty)
-                    const SliverToBoxAdapter(
+                    SliverToBoxAdapter(
                       child: Padding(
                         padding: EdgeInsets.fromLTRB(20, 12, 20, 8),
                         child: Text(
@@ -229,7 +285,9 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: CupertinoColors.secondaryLabel,
+                            color: isDark
+                                ? Colors.white60
+                                : CupertinoColors.secondaryLabel,
                             textBaseline: TextBaseline.alphabetic,
                           ),
                         ),
@@ -261,36 +319,22 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
                 MediaQuery.of(context).padding.bottom + 12,
               ),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
                 border: Border(
                   top: BorderSide(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     width: 0.5,
                   ),
                 ),
               ),
               child: Container(
                 width: double.infinity,
-                height: 54,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF1A237E), Color(0xFF3949AB)],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF1A237E).withOpacity(0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
+                height: 56,
+                decoration: AppDesign.primaryGradientDecoration(isDark),
                 child: CupertinoButton(
                   padding: EdgeInsets.zero,
                   onPressed: () => _handleCalculate(targetCurrency),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
@@ -301,11 +345,8 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
                       SizedBox(width: 8),
                       Text(
                         "정산 결과 보기",
-                        style: TextStyle(
+                        style: AppDesign.buttonTextStyle.copyWith(
                           color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 17,
-                          letterSpacing: -0.5,
                         ),
                       ),
                     ],
@@ -335,9 +376,11 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
             children: [
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 17,
-                  color: CupertinoColors.label,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : CupertinoColors.label,
                   fontWeight: FontWeight.w400,
                 ),
               ),
@@ -353,38 +396,161 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
     );
   }
 
-  Widget _buildCurrencySegmentedControl(String targetCode) {
+  Widget _buildCurrencySegmentedControl(
+    String targetCode,
+    List<Currency> favorites,
+  ) {
     return SizedBox(
       width: 150, // Slightly wider to avoid overlap
       child: CupertinoSlidingSegmentedControl<bool>(
         groupValue: _isKrwInput,
         children: {
-          true: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(
-              "KRW",
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: _isKrwInput ? FontWeight.bold : FontWeight.normal,
+          true: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              if (_isKrwInput) {
+                // Already KRW, do nothing or show something?
+                // User specifically asked for the "other" currency picker
+              } else {
+                setState(() => _isKrwInput = true);
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text(
+                "KRW",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: _isKrwInput ? FontWeight.bold : FontWeight.normal,
+                ),
               ),
             ),
           ),
-          false: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(
-              targetCode,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: !_isKrwInput ? FontWeight.bold : FontWeight.normal,
+          false: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              if (!_isKrwInput) {
+                // Already on Target currency, open picker!
+                _showCurrencyPicker(favorites);
+              } else {
+                setState(() => _isKrwInput = false);
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text(
+                targetCode,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: !_isKrwInput
+                      ? FontWeight.bold
+                      : FontWeight.normal,
+                ),
               ),
             ),
           ),
         },
         onValueChanged: (val) {
-          if (val != null) setState(() => _isKrwInput = val);
+          // Standard selection logic handled by GestureDetector for "repeat" support
         },
+      ),
+    );
+  }
+
+  void _showCurrencyPicker(List<Currency> favorites) {
+    if (favorites.isEmpty) return;
+
+    // Filter out KRW
+    final items = favorites.where((c) => c.code != 'KRW').toList();
+    if (items.isEmpty) return;
+
+    final selectedId = ref.read(selectedCurrencyIdProvider);
+    int tempIndex = items.indexWhere((c) => c.uniqueId == selectedId);
+    if (tempIndex == -1) tempIndex = 0;
+
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => Container(
+        height: 300,
+        padding: const EdgeInsets.only(top: 6.0),
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: Column(
+          children: [
+            Container(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.grey[900]
+                  : Colors.grey[100],
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  CupertinoButton(
+                    child: const Text(
+                      "관리",
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      context.push(
+                        '/currency_manage',
+                        extra: {'isSelectionMode': false},
+                      );
+                    },
+                  ),
+                  const Text(
+                    "국가(통화) 선택",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.none,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  CupertinoButton(
+                    child: const Text(
+                      "확인",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () {
+                      final selected = items[tempIndex];
+                      ref
+                          .read(selectedCurrencyIdProvider.notifier)
+                          .setSelectedId(selected.uniqueId);
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: CupertinoPicker(
+                scrollController: FixedExtentScrollController(
+                  initialItem: tempIndex,
+                ),
+                itemExtent: 44,
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                onSelectedItemChanged: (index) => tempIndex = index,
+                children: items
+                    .map(
+                      (c) => Center(
+                        child: Text(
+                          "${c.name} (${c.code})",
+                          style: TextStyle(
+                            fontSize: 20,
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white
+                                : Colors.black,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -419,7 +585,9 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
                   hintStyle: TextStyle(
                     color: isDark
                         ? Colors.white24
-                        : CupertinoColors.placeholderText.withOpacity(0.3),
+                        : CupertinoColors.placeholderText.withValues(
+                            alpha: 0.3,
+                          ),
                   ),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.zero,
@@ -511,9 +679,36 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
       return;
     }
 
+    // Apply exchange rate correction if enabled
+    final settings = ref.read(settingsProvider);
+    double? rate = targetCurrency?.rateToKrw;
+
+    if (!_isKrwInput && (rate == null || rate == 0)) {
+      showCupertinoDialog(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text("알림"),
+          content: const Text("환율 정보를 불러오는 중입니다. 잠시 후 다시 시도해주세요."),
+          actions: [
+            CupertinoDialogAction(
+              child: const Text("확인"),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    double finalRate = rate ?? 1.0;
+    if (settings.isExchangeCorrectionEnabled && targetCurrency != null) {
+      finalRate =
+          finalRate * (1 + (settings.exchangeCorrectionPercentage / 100));
+    }
+
     double krwAmount = inputAmount;
     if (!_isKrwInput && targetCurrency != null) {
-      krwAmount = inputAmount * targetCurrency.rateToKrw;
+      krwAmount = inputAmount * finalRate;
     }
 
     // Determine splitting amount based on _isSplitInLocal
@@ -542,7 +737,7 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
       roundUnit: _selectedUnit,
       originalAmount: inputAmount,
       originalCurrency: _isKrwInput ? "KRW" : targetCode,
-      rateToKrw: targetCurrency?.rateToKrw ?? 1.0,
+      rateToKrw: rate,
     );
     ref.read(splitHistoryProvider.notifier).addSplit(newSplit);
 
@@ -599,13 +794,13 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
         border: Border.all(
-          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
           width: 0.5,
         ),
       ),
@@ -629,36 +824,11 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
             motion: const ScrollMotion(),
             children: [
               SlidableAction(
-                onPressed: (context) {
-                  final result = SplitCalculator.calculateSplit(
-                    totalAmount: split.totalAmount,
-                    peopleCount: split.peopleCount,
-                    roundUnit: split.roundUnit,
-                  );
-                  Navigator.push(
-                    context,
-                    CupertinoPageRoute(
-                      builder: (context) => SplitReportScreen(
-                        totalAmount:
-                            (split.originalAmount ?? split.totalAmount) *
-                            (split.rateToKrw ?? 1.0),
-                        originalAmount:
-                            split.originalAmount ?? split.totalAmount,
-                        originalCurrency:
-                            split.originalCurrency ?? split.currency,
-                        peopleCount: split.peopleCount,
-                        roundUnit: split.roundUnit,
-                        result: result,
-                        splitCurrency: split.currency,
-                        rateToKrw: split.rateToKrw ?? 1.0,
-                      ),
-                    ),
-                  );
-                },
-                backgroundColor: const Color(0xFF0A84FF),
+                onPressed: (context) => _showProjectPickerForSplit(split),
+                backgroundColor: const Color(0xFF34C759), // Green
                 foregroundColor: Colors.white,
-                icon: CupertinoIcons.pencil,
-                label: '수정',
+                icon: CupertinoIcons.book_fill,
+                label: '여계부 등록',
               ),
             ],
           ),
@@ -728,7 +898,7 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
                             style: TextStyle(
                               fontSize: 14,
                               color: theme.textTheme.bodyMedium?.color
-                                  ?.withOpacity(0.7),
+                                  ?.withValues(alpha: 0.7),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -746,6 +916,72 @@ class _SplitHomeScreenState extends ConsumerState<SplitHomeScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showProjectPickerForSplit(SplitBill split) {
+    final projects = ref.read(ledgerProvider);
+
+    // CRITICAL: Filter projects by split currency (matches split_report_screen.dart)
+    final relevantProjects = projects.where((p) {
+      return p.defaultCurrency == split.currency ||
+          p.countries.contains(split.currency);
+    }).toList();
+
+    if (relevantProjects.isEmpty) {
+      showCupertinoDialog(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text("해당 통화 프로젝트 없음"),
+          content: Text(
+            "${split.currency} 통화를 사용하는 여행 프로젝트가 여계부에 없습니다.\n여계부에서 프로젝트를 먼저 생성하거나 통화 정보를 확인해주세요.",
+          ),
+          actions: [
+            CupertinoDialogAction(
+              child: const Text("확인"),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text("여계부 등록"),
+        message: Text("정산 내역을 등록할 ${split.currency} 여행을 선택하세요."),
+        actions: relevantProjects.map((project) {
+          return CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _showLedgerAddSheet(project.id, split);
+            },
+            child: Text(project.title),
+          );
+        }).toList(),
+        cancelButton: CupertinoActionSheetAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.pop(context),
+          child: const Text("취소"),
+        ),
+      ),
+    );
+  }
+
+  void _showLedgerAddSheet(String projectId, SplitBill split) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ExpenseAddSheet(
+        projectId: projectId,
+        initialAmount: split.totalAmount,
+        initialCurrency: split.currency,
+        initialDate: split.date,
+        initialTitle: "정산: ${split.title}",
       ),
     );
   }
@@ -822,204 +1058,4 @@ class ThousandsSeparatorInputFormatter extends TextInputFormatter {
   }
 }
 
-class _HorizontalDialPicker<T> extends StatefulWidget {
-  final List<T> items;
-  final T selectedValue;
-  final ValueChanged<T> onChanged;
-  final Widget Function(BuildContext, T, double opacity, double scale)
-  itemBuilder;
-  final double viewportFraction;
-
-  const _HorizontalDialPicker({
-    required this.items,
-    required this.selectedValue,
-    required this.onChanged,
-    required this.itemBuilder,
-    required this.viewportFraction,
-  });
-
-  @override
-  State<_HorizontalDialPicker<T>> createState() =>
-      __HorizontalDialPickerState<T>();
-}
-
-class __HorizontalDialPickerState<T> extends State<_HorizontalDialPicker<T>> {
-  late PageController _controller;
-  late double _currentPage;
-
-  @override
-  void initState() {
-    super.initState();
-    final initialIndex = widget.items.indexOf(widget.selectedValue);
-    _currentPage = initialIndex.toDouble();
-    _controller = PageController(
-      initialPage: initialIndex,
-      viewportFraction: widget.viewportFraction,
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      height: 60,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(
-          color: isDark ? Colors.white10 : const Color(0xFFF2F2F7),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 2,
-            offset: const Offset(0, -1),
-          ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // 1. Picker (Bottom)
-          NotificationListener<ScrollNotification>(
-            onNotification: (notification) {
-              if (notification is ScrollUpdateNotification) {
-                setState(() {
-                  _currentPage = _controller.page ?? 0;
-                });
-              }
-              if (notification is ScrollEndNotification) {
-                final int newIndex = _controller.page!.round();
-                if (widget.items[newIndex] != widget.selectedValue) {
-                  HapticFeedback.lightImpact();
-                  widget.onChanged(widget.items[newIndex]);
-                }
-              }
-              return true;
-            },
-            child: PageView.builder(
-              controller: _controller,
-              physics: const BouncingScrollPhysics(),
-              itemCount: widget.items.length,
-              itemBuilder: (context, index) {
-                final double difference = (index - _currentPage).abs();
-                final double opacity = (1 - (difference * 0.5)).clamp(0.2, 1.0);
-                final double scale = (1.2 - (difference * 0.2)).clamp(0.8, 1.2);
-
-                return Center(
-                  child: widget.itemBuilder(
-                    context,
-                    widget.items[index],
-                    opacity,
-                    scale,
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // 2. Edge Fading & Glassy Overlay (Middle)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(30),
-                  gradient: LinearGradient(
-                    colors: isDark
-                        ? [
-                            const Color(0xFF2C2C2E),
-                            const Color(0xFF2C2C2E).withOpacity(0),
-                            const Color(0xFF2C2C2E).withOpacity(0),
-                            const Color(0xFF2C2C2E),
-                          ]
-                        : [
-                            Colors.white,
-                            Colors.white.withOpacity(0),
-                            Colors.white.withOpacity(0),
-                            Colors.white,
-                          ],
-                    stops: const [0.0, 0.2, 0.8, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // 3. Arrows (Middle, on top of gradient)
-          Positioned(
-            left: 12,
-            child: IgnorePointer(
-              child: Icon(
-                CupertinoIcons.chevron_left,
-                size: 20,
-                color: isDark
-                    ? Colors.white.withOpacity(0.15)
-                    : Colors.black.withOpacity(0.15),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 12,
-            child: IgnorePointer(
-              child: Icon(
-                CupertinoIcons.chevron_right,
-                size: 20,
-                color: isDark
-                    ? Colors.white.withOpacity(0.15)
-                    : Colors.black.withOpacity(0.15),
-              ),
-            ),
-          ),
-
-          // 4. Touch Targets (Top)
-          Positioned.fill(
-            child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      if (_controller.page! > 0) {
-                        _controller.previousPage(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                        );
-                      }
-                    },
-                    child: Container(color: Colors.transparent),
-                  ),
-                ),
-                const Spacer(flex: 3),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      if (_controller.page! < widget.items.length - 1) {
-                        _controller.nextPage(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                        );
-                      }
-                    },
-                    child: Container(color: Colors.transparent),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// Local class _HorizontalDialPicker removed. Use lib/presentation/widgets/horizontal_dial_picker.dart instead.

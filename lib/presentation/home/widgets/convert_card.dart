@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/design_system.dart';
 import '../../../data/models/currency_model.dart';
 import 'package:intl/intl.dart';
 
@@ -94,10 +95,12 @@ class _ConvertCardState extends State<ConvertCard> {
               const SizedBox(height: 4),
               Text(
                 '₩ ${currencyFormat.format(krwAmount.round())}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 48,
                   fontWeight: FontWeight.bold,
-                  color: Colors.blueAccent,
+                  color: AppColors.getTextGreen(
+                    Theme.of(context).brightness == Brightness.dark,
+                  ),
                 ),
                 textAlign: TextAlign.right,
               ),
@@ -136,7 +139,7 @@ class _ConvertCardState extends State<ConvertCard> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
+                    backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),

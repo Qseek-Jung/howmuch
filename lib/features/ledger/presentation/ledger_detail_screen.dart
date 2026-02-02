@@ -8,6 +8,9 @@ import '../models/ledger_expense.dart';
 import '../providers/ledger_provider.dart';
 import 'expense_add_sheet.dart';
 import 'ledger_report_screen.dart';
+import '../../../core/design_system.dart';
+import 'widgets/report_icon_painter.dart';
+import '../../../presentation/widgets/global_banner_ad.dart';
 
 class LedgerDetailScreen extends ConsumerStatefulWidget {
   final LedgerProject project;
@@ -70,7 +73,9 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
     );
 
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : const Color(0xFFF2F2F7),
+      backgroundColor: isDark
+          ? AppColors.backgroundDark
+          : AppColors.backgroundLight,
       appBar: AppBar(
         title: Text(
           project.title,
@@ -80,30 +85,22 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
             fontSize: 17,
           ),
         ),
-        backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        backgroundColor: isDark
+            ? AppColors.surfaceDark
+            : AppColors.surfaceLight,
         elevation: 0,
-        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
+        centerTitle: true,
+        leading: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: () => Navigator.pop(context),
+          child: Icon(
+            CupertinoIcons.back,
+            color: isDark ? Colors.white : Colors.black,
+          ),
+        ),
         actions: [
-          IconButton(
-            icon: Icon(
-              CupertinoIcons.trash,
-              color: isDark ? Colors.white : Colors.red,
-            ),
-            onPressed: () => _deleteProject(context, project.id),
-          ),
-          IconButton(
-            icon: Icon(
-              CupertinoIcons.settings,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
-            onPressed: () => _showMemberSettings(context, project),
-          ),
-          IconButton(
-            icon: Icon(
-              CupertinoIcons.chart_pie_fill,
-              color: isDark ? Colors.white : const Color(0xFF1A237E),
-            ),
-            onPressed: () {
+          GestureDetector(
+            onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -111,12 +108,37 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
                 ),
               );
             },
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              width: 32,
+              height: 32,
+              child: CustomPaint(painter: ReportIconPainter(isDark: isDark)),
+            ),
+          ),
+          PopupMenuButton<String>(
+            icon: Icon(
+              Icons.more_vert,
+              color: isDark ? Colors.white : Colors.black,
+            ),
+            onSelected: (value) {
+              if (value == 'delete') {
+                _confirmDeleteProject(context, project.id);
+              }
+            },
+            itemBuilder: (BuildContext context) {
+              return [
+                const PopupMenuItem<String>(
+                  value: 'delete',
+                  child: Text('여행 삭제', style: TextStyle(color: Colors.red)),
+                ),
+              ];
+            },
           ),
         ],
       ),
       body: Column(
         children: [
-          _buildTotalHeader(totalSpentKrw, isDark),
+          _buildTotalHeader(project, totalSpentKrw, isDark),
           _buildDateFilter(project, isDark), // New Date Filter
           Expanded(
             child: project.expenses.isEmpty
@@ -141,21 +163,39 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
                         expenses,
                         project.startDate,
                         isDark,
-                        project.id, // Need projectId for actions
+                        project.id,
+                        project.defaultCurrency,
                       );
                     },
                   ),
           ),
+          const GlobalBannerAd(),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddExpenseSheet(),
-        backgroundColor: const Color(0xFF1A237E),
-        foregroundColor: Colors.white,
-        icon: const Icon(CupertinoIcons.add, color: Colors.white),
-        label: const Text(
-          "지출 추가",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+      floatingActionButton: Container(
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: GestureDetector(
+          onTap: () => _showAddExpenseSheet(),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            decoration: AppDesign.primaryGradientDecoration(isDark),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(CupertinoIcons.add, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  "지출 추가",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -206,29 +246,29 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
                 alignment: Alignment.center,
                 margin: const EdgeInsets.only(right: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? const Color(0xFF1A237E)
-                      : (isDark ? Colors.white10 : Colors.grey[200]),
-                  borderRadius: BorderRadius.circular(20),
+                decoration: AppDesign.selectionDecoration(
+                  isSelected: isSelected,
+                  isDark: isDark,
                 ),
                 child: Text(
                   "전체",
-                  style: TextStyle(
-                    color: isSelected
-                        ? Colors.white
-                        : (isDark ? Colors.white70 : Colors.black87),
-                    fontWeight: FontWeight.bold,
+                  style: AppDesign.selectionTextStyle(
+                    isSelected: isSelected,
+                    isDark: isDark,
                   ),
                 ),
               ),
             );
           }
           final date = exactDates[index - 1];
+          final dateStr = DateFormat('yyyyMMdd').format(date);
           final isSelected =
               _selectedDateFilter != null &&
-              DateFormat('yyyyMMdd').format(_selectedDateFilter!) ==
-                  DateFormat('yyyyMMdd').format(date);
+              DateFormat('yyyyMMdd').format(_selectedDateFilter!) == dateStr;
+
+          final hasExpense = project.expenses.any(
+            (e) => DateFormat('yyyyMMdd').format(e.date) == dateStr,
+          );
 
           return GestureDetector(
             onTap: () => setState(() => _selectedDateFilter = date),
@@ -236,34 +276,62 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
               alignment: Alignment.center,
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? const Color(0xFF1A237E)
-                    : (isDark ? Colors.white10 : Colors.grey[200]),
-                border: isSelected
-                    ? null
-                    : Border.all(color: Colors.transparent),
-                borderRadius: BorderRadius.circular(20),
-              ),
+              decoration:
+                  AppDesign.selectionDecoration(
+                    isSelected: isSelected,
+                    isDark: isDark,
+                  ).copyWith(
+                    border: hasExpense && !isSelected
+                        ? Border.all(
+                            color: isDark
+                                ? AppColors.getPrimary(isDark).withOpacity(0.3)
+                                : AppColors.getPrimary(isDark).withOpacity(0.2),
+                            width: 1,
+                          )
+                        : null,
+                  ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     DateFormat('MM.dd').format(date),
                     style: TextStyle(
-                      fontSize: 12,
-                      color: isSelected ? Colors.white70 : Colors.grey,
+                      fontSize: 10,
+                      fontWeight: hasExpense
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      color: isSelected
+                          ? AppColors.getPrimary(isDark).withOpacity(0.6)
+                          : (hasExpense
+                                ? (isDark ? Colors.white70 : Colors.black87)
+                                : Colors.grey),
                     ),
                   ),
                   Text(
                     DateFormat('E', 'ko_KR').format(date),
-                    style: TextStyle(
-                      color: isSelected
-                          ? Colors.white
-                          : (isDark ? Colors.white : Colors.black87),
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style:
+                        AppDesign.selectionTextStyle(
+                          isSelected: isSelected,
+                          isDark: isDark,
+                        ).copyWith(
+                          fontSize: 13,
+                          fontWeight: isSelected || hasExpense
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
                   ),
+                  if (hasExpense)
+                    Container(
+                      margin: const EdgeInsets.only(top: 2),
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.getPrimary(isDark)
+                            : AppColors.getPrimary(isDark).withOpacity(0.5),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -273,14 +341,34 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
     );
   }
 
-  Widget _buildTotalHeader(double total, bool isDark) {
+  Widget _buildTotalHeader(
+    LedgerProject project,
+    double totalKrw,
+    bool isDark,
+  ) {
     final currencyFormat = NumberFormat('#,###');
+    final localCurrencyFormat = NumberFormat('#,###.##');
+
+    double totalLocal = project.expenses.fold(0.0, (sum, e) {
+      if (e.currencyCode == project.defaultCurrency) {
+        return sum + e.amountLocal;
+      }
+      return sum; // Skip or handle multiple currencies if needed
+    });
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        color: isDark ? AppColors.surfaceDark : Colors.white,
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -290,19 +378,41 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
             style: TextStyle(
               fontSize: 14,
               color: isDark ? Colors.white70 : Colors.grey[600],
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            "${currencyFormat.format(total.round())}원",
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.w800,
-              color: isDark ? Colors.white : Colors.black,
-              letterSpacing: -1.0,
+          const SizedBox(height: 12),
+          if (project.defaultCurrency != "KRW" && totalLocal > 0) ...[
+            Text(
+              "${localCurrencyFormat.format(totalLocal)} ${project.defaultCurrency}",
+              style: TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.w900,
+                color: isDark ? Colors.white : Colors.black,
+                letterSpacing: -1.0,
+              ),
             ),
-          ),
+            const SizedBox(height: 4),
+            Text(
+              "≈ ${currencyFormat.format(totalKrw.round())}원",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? AppColors.getTextGreen(isDark)
+                    : AppColors.getTextGreen(isDark),
+              ),
+            ),
+          ] else
+            Text(
+              "${currencyFormat.format(totalKrw.round())}원",
+              style: TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.w900,
+                color: isDark ? Colors.white : Colors.black,
+                letterSpacing: -1.0,
+              ),
+            ),
         ],
       ),
     );
@@ -314,6 +424,7 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
     DateTime projectStart,
     bool isDark,
     String projectId,
+    String defaultCurrency,
   ) {
     final date = DateTime.parse(dateKey);
     final diff =
@@ -325,8 +436,6 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
         1;
     final dayLabel = "Day $diff";
     final f = DateFormat('MM.dd (E)', 'ko_KR');
-
-    double dailyTotal = expenses.fold(0, (sum, e) => sum + e.amountKrw);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -366,14 +475,6 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
                     ),
                   ),
                 ],
-              ),
-              Text(
-                "${NumberFormat('#,###').format(dailyTotal.round())}원",
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black,
-                ),
               ),
             ],
           ),
@@ -419,7 +520,7 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
         children: [
           SlidableAction(
             onPressed: (context) => _updateExpense(expense),
-            backgroundColor: const Color(0xFF0A84FF), // iOS Blue
+            backgroundColor: AppColors.primary, // iOS Blue replaced with Green
             foregroundColor: Colors.white,
             icon: Icons.edit,
             label: '수정',
@@ -443,15 +544,7 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
             color: isDark ? Colors.white : Colors.black,
           ),
         ),
-        subtitle: expense.amountLocal > 0 && expense.currencyCode != "KRW"
-            ? Text(
-                "${NumberFormat('#,###.##').format(expense.amountLocal)} ${expense.currencyCode}",
-                style: TextStyle(
-                  color: isDark ? Colors.white54 : Colors.grey[600],
-                  fontSize: 13,
-                ),
-              )
-            : null,
+        subtitle: _buildSubtitle(expense, isDark),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -460,12 +553,16 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
               "${NumberFormat('#,###').format(expense.amountKrw.round())}원",
               style: TextStyle(
                 fontSize: 16,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                    FontWeight.w900, // Extra bold for KRW total as requested
                 color: isDark ? Colors.white : Colors.black,
               ),
             ),
-            if (expense.receiptPath != null)
-              const Icon(Icons.receipt, size: 12, color: Colors.grey),
+            if (expense.receiptPaths.isNotEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Icon(Icons.receipt, size: 10, color: Colors.grey),
+              ),
           ],
         ),
         onTap: () => _updateExpense(expense),
@@ -531,6 +628,15 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
       case ExpenseCategory.tour:
         icon = Icons.camera_alt;
         break;
+      case ExpenseCategory.golf:
+        icon = Icons.golf_course;
+        break;
+      case ExpenseCategory.activity:
+        icon = Icons.surfing;
+        break;
+      case ExpenseCategory.medical:
+        icon = Icons.medical_services;
+        break;
       case ExpenseCategory.etc:
         icon = Icons.more_horiz;
         break;
@@ -538,32 +644,42 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
     return Icon(icon, size: 20, color: isDark ? Colors.white : Colors.black87);
   }
 
-  Widget _buildEmptyState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            CupertinoIcons.money_dollar_circle,
-            size: 64,
-            color: isDark ? Colors.white24 : Colors.grey[300],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            "아직 지출 내역이 없습니다",
-            style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[400]),
-          ),
-        ],
+  Widget? _buildSubtitle(LedgerExpense expense, bool isDark) {
+    final hasForeignAmount =
+        expense.amountLocal > 0 && expense.currencyCode != "KRW";
+    final hasMemo = expense.memo != null && expense.memo!.isNotEmpty;
+
+    if (!hasForeignAmount && !hasMemo) return null;
+
+    String text = "";
+    if (hasForeignAmount) {
+      text +=
+          "${NumberFormat('#,###.##').format(expense.amountLocal)} ${expense.currencyCode}";
+    }
+
+    if (hasMemo) {
+      if (text.isNotEmpty) text += " | ";
+      text += expense.memo!;
+    }
+
+    return Text(
+      text,
+      style: TextStyle(
+        color: isDark ? Colors.white54 : Colors.grey[600],
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+        overflow: TextOverflow.ellipsis,
       ),
+      maxLines: 1,
     );
   }
 
-  void _deleteProject(BuildContext context, String projectId) {
+  void _confirmDeleteProject(BuildContext context, String projectId) {
     showCupertinoDialog(
       context: context,
       builder: (context) => CupertinoAlertDialog(
         title: const Text("여행 삭제"),
-        content: const Text("정말로 이 여행을 삭제하시겠습니까?\n삭제된 데이터는 복구할 수 없습니다."),
+        content: const Text("정말로 이 여행 기록을 삭제하시겠습니까?\n삭제된 데이터는 복구할 수 없습니다."),
         actions: [
           CupertinoDialogAction(
             child: const Text("취소"),
@@ -583,85 +699,22 @@ class _LedgerDetailScreenState extends ConsumerState<LedgerDetailScreen> {
     );
   }
 
-  void _showMemberSettings(BuildContext context, LedgerProject project) {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (context) => Container(
-        height: 400,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            const Text(
-              "동행자 관리",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: ListView.builder(
-                itemCount: project.members.length,
-                itemBuilder: (context, index) {
-                  final member = project.members[index];
-                  return ListTile(
-                    leading: CircleAvatar(child: Text(member[0])),
-                    title: Text(member),
-                    trailing: TextButton.icon(
-                      icon: const Icon(
-                        CupertinoIcons.chat_bubble_2_fill,
-                        size: 16,
-                      ),
-                      label: const Text("카카오톡 연결"),
-                      onPressed: () {
-                        // Mock Kakao Connection
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text("$member 님에게 카카오톡 초대 메시지를 보냈습니다."),
-                          ),
-                        );
-                      },
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showMemberActionSheet(context, member);
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showMemberActionSheet(BuildContext context, String member) {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: Text("$member 설정"),
-        actions: [
-          CupertinoActionSheetAction(
-            child: const Text("수동 입력 (현재 상태)"),
-            onPressed: () => Navigator.pop(context),
+  Widget _buildEmptyState(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            CupertinoIcons.money_dollar_circle,
+            size: 64,
+            color: isDark ? Colors.white24 : Colors.grey[300],
           ),
-          CupertinoActionSheetAction(
-            child: const Text("카카오톡으로 초대/연결"),
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("카카오톡 연결 요청을 보냈습니다.")),
-              );
-            },
+          const SizedBox(height: 16),
+          Text(
+            "아직 지출 내역이 없습니다",
+            style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[400]),
           ),
         ],
-        cancelButton: CupertinoActionSheetAction(
-          child: const Text("취소"),
-          onPressed: () => Navigator.pop(context),
-        ),
       ),
     );
   }

@@ -4,8 +4,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../core/design_system.dart';
 import '../../core/split_logic.dart';
+
+import '../../features/ledger/presentation/expense_add_sheet.dart';
+import '../../features/ledger/providers/ledger_provider.dart';
+import '../../features/ledger/models/ledger_project.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/ad_settings_provider.dart';
+import '../../services/admob_service.dart';
+import '../widgets/global_banner_ad.dart';
 
 class SplitReportScreen extends ConsumerStatefulWidget {
   final double totalAmount; // KRW Total
@@ -57,8 +65,17 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
         elevation: 0,
+        centerTitle: true,
+        leading: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: () => Navigator.pop(context),
+          child: Icon(
+            CupertinoIcons.back,
+            color: isDark ? Colors.white : Colors.black,
+          ),
+        ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(0.5),
           child: Container(
@@ -66,21 +83,24 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
             height: 0.5,
           ),
         ),
-        iconTheme: IconThemeData(
-          color: isDark ? const Color(0xFF0A84FF) : CupertinoColors.activeBlue,
-        ),
-        centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          children: [
-            _buildResultHeader(f, isDark),
-            _buildSettingsList(f, isDark),
-            _buildExtraItemsSection(f, isDark),
-            const SizedBox(height: 140),
-          ],
-        ),
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                children: [
+                  _buildResultHeader(f, isDark),
+                  _buildSettingsList(f, isDark),
+                  _buildExtraItemsSection(f, isDark),
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          ),
+          const GlobalBannerAd(),
+        ],
       ),
       bottomSheet: _buildBottomActions(isDark),
     );
@@ -122,15 +142,17 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
             widget.splitCurrency == "KRW"
                 ? "1인당 보낼 금액"
                 : "1인당 보낼 금액 (${widget.splitCurrency})",
-            style: const TextStyle(
-              color: CupertinoColors.secondaryLabel,
+            style: TextStyle(
+              color: isDark ? Colors.white70 : CupertinoColors.secondaryLabel,
               fontSize: 14,
               fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            "${f.format(widget.result.perPersonRounded)}${widget.splitCurrency == "KRW" ? "원" : " " + widget.splitCurrency}",
+            widget.splitCurrency == "KRW"
+                ? "${f.format(widget.result.perPersonRounded.toInt())}원"
+                : "${f.format(widget.result.perPersonRounded)} ${widget.splitCurrency}",
             style: TextStyle(
               fontSize: 44,
               fontWeight: FontWeight.w900,
@@ -149,15 +171,61 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                "원금액 ${f.format(perPersonBase)} + 뽀찌 ${f.format(perPersonBbozzi)}${widget.splitCurrency == "KRW" ? "원" : ""}",
-                style: const TextStyle(
+                widget.splitCurrency == "KRW"
+                    ? "원금액 ${f.format(perPersonBase.toInt())} + 정산금액 절상 (+${f.format(perPersonBbozzi.toInt())}원)"
+                    : "원금액 ${f.format(perPersonBase)} + ${widget.splitCurrency} 절상 (+${f.format(perPersonBbozzi)})",
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: CupertinoColors.secondaryLabel,
+                  color: isDark
+                      ? Colors.white70
+                      : CupertinoColors.secondaryLabel,
                 ),
               ),
             ),
           ],
+
+          const SizedBox(height: 24),
+          // Manager vs Others breakdown
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : const Color(0xFFF9F9F9),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white10
+                    : Colors.black.withValues(alpha: 0.05),
+              ),
+            ),
+            child: Column(
+              children: [
+                _buildShareRow(
+                  "총무가 받을 금액 (1인)",
+                  "${f.format(widget.result.perPersonRounded.toInt())}${widget.splitCurrency == "KRW" ? "원" : " " + widget.splitCurrency}",
+                  isDark,
+                  isPrimary: true,
+                ),
+                const SizedBox(height: 12),
+                Divider(
+                  height: 1,
+                  color: isDark
+                      ? Colors.white10
+                      : Colors.black.withValues(alpha: 0.05),
+                ),
+                const SizedBox(height: 12),
+                _buildShareRow(
+                  "총무 본인 부담금",
+                  "${f.format((widget.result.perPersonRounded - widget.result.surplus).toInt())}${widget.splitCurrency == "KRW" ? "원" : " " + widget.splitCurrency}",
+                  isDark,
+                  subtitle:
+                      "(${f.format(widget.result.surplus.toInt())}${widget.splitCurrency == "KRW" ? "원" : " " + widget.splitCurrency} 절상 정산 혜택 반영)",
+                ),
+              ],
+            ),
+          ),
 
           if (widget.splitCurrency != "KRW") ...[
             const SizedBox(height: 8),
@@ -210,8 +278,8 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
           ),
           if (widget.result.surplus > 0)
             _rowItem(
-              "총무 뽀찌 (잔돈)",
-              "+${f.format(widget.result.surplus)}${widget.splitCurrency == "KRW" ? "원" : " " + widget.splitCurrency}",
+              "총무 정산 혜택",
+              "+${f.format(widget.result.surplus.toInt())}${widget.splitCurrency == "KRW" ? "원" : " " + widget.splitCurrency}",
               false,
               valueColor: isDark
                   ? const Color(0xFFFF9F0A)
@@ -222,12 +290,62 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
     );
   }
 
+  Widget _buildShareRow(
+    String label,
+    String value,
+    bool isDark, {
+    bool isPrimary = false,
+    String? subtitle,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.white70 : Colors.black54,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? Colors.white38 : Colors.grey,
+                ),
+              ),
+            ],
+          ],
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: isPrimary ? 20 : 17,
+            fontWeight: FontWeight.bold,
+            color: isPrimary
+                ? (isDark
+                      ? const Color(0xFF0A84FF)
+                      : CupertinoColors.activeBlue)
+                : (isDark ? Colors.white : Colors.black),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _rowItem(
     String label,
     String value,
     bool showDivider, {
     Color? valueColor,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Padding(
@@ -252,11 +370,7 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color:
-                        valueColor ??
-                        (Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white
-                            : CupertinoColors.label),
+                    color: valueColor ?? (isDark ? Colors.white : Colors.black),
                     letterSpacing: -0.3,
                   ),
                 ),
@@ -318,9 +432,12 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
                 ..._extraItems.asMap().entries.map((entry) {
                   final int idx = entry.key;
                   final item = entry.value;
+                  final String currencySuffix = widget.splitCurrency == "KRW"
+                      ? "원"
+                      : " ${widget.splitCurrency}";
                   return _rowItem(
                     item['name'],
-                    "${f.format(item['price'])}원",
+                    "${f.format(item['price'])}$currencySuffix",
                     idx < _extraItems.length - 1,
                   );
                 }),
@@ -363,6 +480,7 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
   }
 
   void _showAddItemDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showCupertinoDialog(
       context: context,
       builder: (context) => CupertinoAlertDialog(
@@ -376,20 +494,28 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
                 placeholder: "항목 이름 (예: 주류)",
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: CupertinoColors.extraLightBackgroundGray,
+                  color: isDark
+                      ? Colors.white10
+                      : CupertinoColors.extraLightBackgroundGray,
                   borderRadius: BorderRadius.circular(8),
                 ),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black),
               ),
               const SizedBox(height: 8),
               CupertinoTextField(
                 controller: _itemPriceController,
-                placeholder: "금액 (원)",
+                placeholder: widget.splitCurrency == "KRW"
+                    ? "금액 (원)"
+                    : "금액 (${widget.splitCurrency})",
                 padding: const EdgeInsets.all(12),
                 keyboardType: TextInputType.number,
                 decoration: BoxDecoration(
-                  color: CupertinoColors.extraLightBackgroundGray,
+                  color: isDark
+                      ? Colors.white10
+                      : CupertinoColors.extraLightBackgroundGray,
                   borderRadius: BorderRadius.circular(8),
                 ),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black),
               ),
             ],
           ),
@@ -444,52 +570,54 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
       child: Row(
         children: [
           Expanded(
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              color: const Color(0xFFFEE500),
-              borderRadius: BorderRadius.circular(14),
-              onPressed: _shareToKakao,
-              pressedOpacity: 0.7,
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    CupertinoIcons.share_up,
-                    color: Colors.black87,
-                    size: 20,
-                  ),
-                  SizedBox(width: 8),
-                  Text(
-                    "카톡 공유",
-                    style: TextStyle(
+            child: GestureDetector(
+              onTap: _shareToKakao,
+              child: Container(
+                height: 56,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE500),
+                  borderRadius: BorderRadius.circular(AppDesign.buttonRadius),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      CupertinoIcons.share_up,
                       color: Colors.black87,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 17,
-                      letterSpacing: -0.5,
+                      size: 20,
                     ),
-                  ),
-                ],
+                    SizedBox(width: 8),
+                    Text(
+                      "카톡 공유",
+                      style: TextStyle(
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 17,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              color: isDark
-                  ? const Color(0xFF0A84FF)
-                  : const Color(0xFF007AFF), // System Blue
-              borderRadius: BorderRadius.circular(14),
-              onPressed: () =>
-                  Navigator.of(context).popUntil((route) => route.isFirst),
-              pressedOpacity: 0.7,
-              child: const Text(
-                "여계부 등록",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 17,
-                  letterSpacing: -0.5,
+            child: GestureDetector(
+              onTap: _registerToLedger,
+              child: Container(
+                height: 56,
+                decoration: AppDesign.primaryGradientDecoration(isDark),
+                child: const Center(
+                  child: Text(
+                    "여계부 등록",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -531,7 +659,7 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
       report += "${f.format(widget.originalAmount)} ${widget.originalCurrency}";
       report += " (약 ${f.format(widget.totalAmount.round())}원)\n";
     } else {
-      report += "${f.format(widget.originalAmount)}원\n";
+      report += "${f.format(widget.originalAmount.toInt())}원\n";
     }
 
     // People count
@@ -540,13 +668,12 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
 
     // 1/N amount
     report +=
-        "1/N : ${f.format(widget.result.perPersonRounded)}$currencySuffix\n";
+        "보낼 금액 (1인) : ${f.format(widget.result.perPersonRounded.toInt())}$currencySuffix\n";
 
     // Rounding breakdown
     if (perPersonBbozzi > 0) {
       report +=
-          "(${f.format(perPersonBase)}원 + ${f.format(widget.roundUnit)}단위 올림)\n";
-      report += "총무뽀찌 : ${f.format(widget.result.surplus)}원\n";
+          "(${f.format(perPersonBase.toInt())}원 + ${f.format(widget.roundUnit)}단위 올림)\n";
     }
 
     // KRW conversion if foreign currency
@@ -559,14 +686,15 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
     if (_extraItems.isNotEmpty) {
       report += "\n[별도 청구 항목]\n";
       for (var item in _extraItems) {
-        report += "• ${item['name']}: ${f.format(item['price'])}원\n";
+        report +=
+            "• ${item['name']}: ${f.format(item['price'].toInt())}$currencySuffix\n";
       }
     }
 
     // Thank you message with total
-    report += "\n뽀지 감사해요~!\n";
+    report += "\n정산 감사합니다~!\n";
     if (_extraItems.isNotEmpty) {
-      report += "총 ${f.format(grandTotal)}원 입금 부탁드려요~!\n";
+      report += "총 ${f.format(grandTotal.toInt())}$currencySuffix 입금 부탁드려요~!\n";
     } else {
       report += "확인 후 입금 부탁드려요~!\n";
     }
@@ -577,6 +705,109 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
       report += bankInfo.displayString;
     }
 
-    Share.share(report);
+    // Show ad before sharing
+    final adSettings = ref.read(adSettingsProvider.notifier);
+    if (adSettings.shouldShowAd()) {
+      AdMobService.instance.showInterstitialAd(
+        onAdDismissed: () {
+          Share.share(report);
+        },
+      );
+    } else {
+      Share.share(report);
+    }
+  }
+
+  void _registerToLedger() {
+    final projects = ref.read(ledgerProvider);
+
+    // Filter projects by current split currency
+    // Check if defaultCurrency matches OR if the split currency is in the managed countries/currencies list
+    final relevantProjects = projects.where((p) {
+      return p.defaultCurrency == widget.splitCurrency ||
+          p.countries.contains(widget.splitCurrency);
+    }).toList();
+
+    if (relevantProjects.isEmpty) {
+      showCupertinoDialog(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          title: const Text("해당 통화 프로젝트 없음"),
+          content: Text(
+            "${widget.splitCurrency} 통화를 사용하는 여행 프로젝트가 여계부에 없습니다.\n여계부에서 프로젝트를 먼저 생성하거나 통화 정보를 확인해주세요.",
+          ),
+          actions: [
+            CupertinoDialogAction(
+              child: const Text("확인"),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Show selection dialog
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: const Text("정산 내역을 등록할 프로젝트 선택"),
+        message: Text("${widget.splitCurrency} 통화 프로젝트 리스트"),
+        actions: relevantProjects.map((project) {
+          return CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _openExpenseAddSheet(project);
+            },
+            child: Text(project.title),
+          );
+        }).toList(),
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text("취소"),
+        ),
+      ),
+    );
+  }
+
+  void _openExpenseAddSheet(LedgerProject project) {
+    // Calculate Amount & Currency
+    double extraTotal = 0;
+    for (var item in _extraItems) {
+      extraTotal += (item['price'] as double);
+    }
+
+    double initialAmount;
+    String initialCurrency;
+    double? initialExchangeRate;
+
+    if (widget.splitCurrency == "KRW") {
+      initialAmount = widget.totalAmount + extraTotal;
+      initialCurrency = "KRW";
+      initialExchangeRate = 1.0;
+    } else {
+      initialAmount = widget.originalAmount + extraTotal;
+      initialCurrency = widget.splitCurrency;
+      initialExchangeRate = widget.rateToKrw;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ExpenseAddSheet(
+        projectId: project.id,
+        initialTitle: _titleController.text.isEmpty
+            ? (widget.splitCurrency == "KRW"
+                  ? "정산 (원화)"
+                  : "정산 (${widget.splitCurrency})")
+            : _titleController.text,
+        initialAmount: initialAmount,
+        initialCurrency: initialCurrency,
+        initialDate: DateTime.now(),
+        initialExchangeRate: initialExchangeRate,
+      ),
+    );
   }
 }
