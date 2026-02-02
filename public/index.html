@@ -61,6 +61,19 @@
                 transform: scale(1.1) rotate(1deg);
             }
         }
+
+        /* Sidebar & Modal styles */
+        #sidebar {
+            transition: transform 0.3s ease-in-out;
+        }
+
+        #sidebar.closed {
+            transform: translateX(-100%);
+        }
+
+        .modal-blur {
+            backdrop-filter: blur(8px);
+        }
     </style>
 </head>
 
@@ -72,8 +85,15 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16 items-center">
                 <div class="flex items-center gap-3">
-                    <img src="./images/app/howmuch-icon_600.png" alt="App Icon" class="h-10 w-10 rounded-xl shadow-md">
-                    <span class="font-bold text-xl tracking-tight text-gray-900">얼마야?</span>
+                    <button class="p-2 -ml-2 rounded-md hover:bg-gray-100 transition flex items-center justify-center"
+                        onclick="toggleSidebar()">
+                        <i data-lucide="menu" class="h-6 w-6 text-gray-700"></i>
+                    </button>
+                    <div class="flex items-center gap-3">
+                        <img src="./images/app/howmuch-icon_600.png" alt="App Icon"
+                            class="h-10 w-10 rounded-xl shadow-md">
+                        <span class="font-bold text-xl tracking-tight text-gray-900">얼마야?</span>
+                    </div>
                 </div>
                 <div class="hidden md:flex space-x-8">
                     <a href="#howmuch" class="text-gray-600 hover:text-blue-600 font-medium transition">환율 계산</a>
@@ -83,7 +103,7 @@
                 </div>
                 <button class="md:hidden p-2 rounded-md hover:bg-gray-100"
                     onclick="document.getElementById('mobile-menu').classList.toggle('hidden')">
-                    <i data-lucide="menu" class="h-6 w-6"></i>
+                    <i data-lucide="chevron-down" class="h-6 w-6"></i>
                 </button>
             </div>
         </div>
@@ -498,32 +518,193 @@
         </div>
     </footer>
 
+    <!-- Sidebar Overlay -->
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black/40 z-[90] hidden modal-blur" onclick="toggleSidebar()">
+    </div>
+
+    <!-- Sidebar -->
+    <div id="sidebar" class="fixed top-0 left-0 w-80 h-full bg-white z-[100] closed shadow-2xl flex flex-col">
+        <div class="p-6 border-b border-gray-100 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <img src="./images/app/howmuch-icon_600.png" alt="App Icon" class="h-8 w-8 rounded-lg">
+                <span class="font-bold text-lg text-gray-900">How Much</span>
+            </div>
+            <button onclick="toggleSidebar()" class="p-2 hover:bg-gray-100 rounded-lg transition">
+                <i data-lucide="x" class="h-6 w-6 text-gray-500"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4 space-y-2">
+            <div class="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Navigation</div>
+            <a href="#hero-section" onclick="toggleSidebar()"
+                class="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition">
+                <i data-lucide="home" class="w-5 h-5"></i>
+                <span class="font-medium">홈</span>
+            </a>
+            <a href="#howmuch" onclick="toggleSidebar()"
+                class="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition">
+                <i data-lucide="calculator" class="w-5 h-5"></i>
+                <span class="font-medium">환율 계산기</span>
+            </a>
+            <a href="#split" onclick="toggleSidebar()"
+                class="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition">
+                <i data-lucide="users" class="w-5 h-5"></i>
+                <span class="font-medium">1/N 정산</span>
+            </a>
+            <a href="#ledger" onclick="toggleSidebar()"
+                class="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition">
+                <i data-lucide="book-open" class="w-5 h-5"></i>
+                <span class="font-medium">여계부 (여행 가계부)</span>
+            </a>
+
+            <div class="pt-6 px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Support</div>
+            <button onclick="openModal('privacy-modal')"
+                class="w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition text-left">
+                <i data-lucide="shield-check" class="w-5 h-5"></i>
+                <span class="font-medium">개인정보처리방침</span>
+            </button>
+            <button onclick="openModal('contact-modal')"
+                class="w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition text-left">
+                <i data-lucide="mail" class="w-5 h-5"></i>
+                <span class="font-medium">문의하기</span>
+            </button>
+        </div>
+        <div class="p-6 border-t border-gray-100 bg-gray-50/50">
+            <div class="text-xs text-gray-400 text-center">Version 2.3.0<br>&copy; 2024 How Much App</div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Privacy Modal -->
+    <div id="privacy-modal" class="fixed inset-0 z-[110] hidden">
+        <div class="absolute inset-0 bg-black/60 modal-blur" onclick="closeModal('privacy-modal')"></div>
+        <div
+            class="absolute inset-4 md:inset-x-auto md:top-12 md:bottom-12 md:left-1/2 md:-translate-x-1/2 md:w-[700px] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+            <div class="p-6 border-b flex justify-between items-center bg-gray-50">
+                <h3 class="text-xl font-bold flex items-center gap-2">
+                    <i data-lucide="shield-check" class="text-blue-600 h-6 w-6"></i>
+                    개인정보처리방침
+                </h3>
+                <button onclick="closeModal('privacy-modal')" class="p-2 hover:bg-gray-200 rounded-full transition">
+                    <i data-lucide="x" class="h-6 w-6 text-gray-600"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-8 prose prose-blue max-w-none text-sm leading-relaxed text-gray-600">
+                <h4 class="text-gray-900 font-bold text-base mb-4">1. 개인정보의 수집 및 이용 목적</h4>
+                <p>'얼마야?' 앱(이하 '앱')은 별도의 회원가입 절차 없이 모든 서비스를 이용할 수 있으며, 사용자의 직접적인 개인 식별 정보(이름, 전화번호, 이메일 등)를 수집하거나 서버에
+                    저장하지 않습니다.</p>
+
+                <h4 class="text-gray-900 font-bold text-base mt-6 mb-4">2. 서비스 제공을 위한 권한 사용 및 처리</h4>
+                <p>앱은 원활한 서비스 제공을 위해 다음의 기기 권한을 사용하며, 해당 데이터는 명시된 목적 외에 다른 용도로 사용되지 않습니다.</p>
+                <ul class="list-disc pl-5 space-y-2">
+                    <li><strong>카메라 (Camera)</strong>: 가계부 영수증 인식을 위한 실시간 텍스트 추출(OCR) 기능을 위해 사용됩니다. 촬영된 이미지는 분석 즉시 폐기되며
+                        서버로 전송되거나 기록되지 않습니다.</li>
+                    <li><strong>위치 정보 (GPS)</strong>: 현재 사용자가 위치한 국가를 자동으로 탐지하여 해당 국가의 통화를 기본값으로 설정하기 위해 사용됩니다. 수집된 실시간
+                        위치 데이터는 통화 설정 목적으로만 사용되며 저장되지 않습니다.</li>
+                    <li><strong>마이크 (Microphone)</strong>: 음성 인식을 통한 금액 및 내역 입력 기능을 위해 사용됩니다. 음성 데이터는 텍스트 변환 후 즉시 소멸됩니다.
+                    </li>
+                </ul>
+
+                <h4 class="text-gray-900 font-bold text-base mt-6 mb-4">3. 제3자 광고 플랫폼 이용 (Google AdMob)</h4>
+                <p>앱은 무료 서비스 유지를 위해 Google AdMob 광고를 게재합니다. 이 과정에서 구글은 사용자 맞춤형 광고 제공 및 광고 성과 측정을 위해 광고 ID(ADID/IDFA)와 같은
+                    비식별 기술 정보를 수집할 수 있습니다. 이는 구글의 개인정보처리방침에 따르며, 사용자는 기기 설정에서 이를 거부할 수 있습니다.</p>
+
+                <h4 class="text-gray-900 font-bold text-base mt-6 mb-4">4. 데이터의 보관 및 파기</h4>
+                <p>사용자가 앱 내에 기록한 모든 여행 지출 내역 및 설정값은 사용자의 기기(Local Storage)에만 안전하게 저장됩니다. 앱을 삭제할 경우 해당 데이터도 함께 즉시 파기됩니다.
+                </p>
+
+                <h4 class="text-gray-900 font-bold text-base mt-6 mb-4">5. 정책의 변경</h4>
+                <p>본 방침은 법령, 보안 기술의 변경 또는 서비스 업데이트에 따라 내용이 추가, 삭제 및 수정될 수 있습니다.</p>
+
+                <div class="mt-8 pt-6 border-t text-xs text-gray-400 text-center">
+                    시행일자: 2024년 2월 2일 | 고객지원: support@howmuchapp.com
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Modal -->
+    <div id="contact-modal" class="fixed inset-0 z-[110] hidden">
+        <div class="absolute inset-0 bg-black/60 modal-blur" onclick="closeModal('contact-modal')"></div>
+        <div
+            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 md:w-96 bg-white rounded-3xl shadow-2xl p-8 flex flex-col items-center text-center">
+            <div class="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6">
+                <i data-lucide="mail" class="text-blue-600 h-10 w-10"></i>
+            </div>
+            <h3 class="text-2xl font-bold mb-2">Contact Us</h3>
+            <p class="text-gray-500 mb-8">앱 사용 중 궁금하신 점이나<br>제안하실 의견이 있다면 메일을 보내주세요.</p>
+
+            <a href="mailto:support@howmuchapp.com"
+                class="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition shadow-lg shadow-blue-200 mb-4 block">
+                메일 보내기
+            </a>
+            <button onclick="closeModal('contact-modal')"
+                class="text-gray-400 font-medium hover:text-gray-600 transition">
+                닫기
+            </button>
+        </div>
+    </div>
+
     <script>
         const heroBg = document.getElementById('hero-bg');
         const heroSection = document.getElementById('hero-section');
 
+        // Sidebar logic
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            sidebar.classList.toggle('closed');
+            overlay.classList.toggle('hidden');
+
+            if (!sidebar.classList.contains('closed')) {
+                document.body.style.overflow = 'hidden';
+            } else {
+                document.body.style.overflow = '';
+            }
+        }
+
+        // Modal logic
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            if (id === 'privacy-modal' || id === 'contact-modal') {
+                toggleSidebar(); // Close sidebar when opening modal
+            }
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+            if (document.getElementById('sidebar').classList.contains('closed')) {
+                document.body.style.overflow = '';
+            }
+        }
+
         // Mouse Parallax
         heroSection.addEventListener('mousemove', (e) => {
-            const x = (window.innerWidth - e.pageX * 2) / 40; // 40 = sensitivity
+            const x = (window.innerWidth - e.pageX * 2) / 40;
             const y = (window.innerHeight - e.pageY * 2) / 40;
 
-            // Apply translation while maintaining scale
             heroBg.style.transform = `scale(1.1) translate(${x}px, ${y}px)`;
         });
 
-        // Optional: Reset on mouse leave or keep it? 
-        // Keeping it usually feels better or let it stay.
-
-        // Scroll Parallax (Vertical)
+        // Scroll Parallax
         window.addEventListener('scroll', () => {
             const scrolled = window.scrollY;
+            const navbar = document.getElementById('navbar');
+
+            if (scrolled > 50) {
+                navbar.classList.add('shadow-lg', 'bg-white');
+                navbar.classList.remove('bg-white/90');
+            } else {
+                navbar.classList.remove('shadow-lg', 'bg-white');
+                navbar.classList.add('bg-white/90');
+            }
+
             if (scrolled < window.innerHeight) {
-                // Determine direction. 
-                // Create a subtle vertical shift
                 heroBg.style.backgroundPositionY = `${50 + (scrolled * 0.03)}%`;
             }
         });
 
+        // Initialize Lucide icons
         lucide.createIcons();
     </script>
 </body>
