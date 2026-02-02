@@ -94,7 +94,7 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
                   _buildResultHeader(f, isDark),
                   _buildSettingsList(f, isDark),
                   _buildExtraItemsSection(f, isDark),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 120), // Increased from 40
                 ],
               ),
             ),
@@ -221,7 +221,7 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
                   "${f.format((widget.result.perPersonRounded - widget.result.surplus).toInt())}${widget.splitCurrency == "KRW" ? "원" : " " + widget.splitCurrency}",
                   isDark,
                   subtitle:
-                      "(${f.format(widget.result.surplus.toInt())}${widget.splitCurrency == "KRW" ? "원" : " " + widget.splitCurrency} 절상 정산 혜택 반영)",
+                      "(${f.format(widget.result.surplus.toInt())}${widget.splitCurrency == "KRW" ? "원" : " " + widget.splitCurrency} 절상 정산 뽀찌 반영)",
                 ),
               ],
             ),
@@ -278,7 +278,7 @@ class _SplitReportScreenState extends ConsumerState<SplitReportScreen> {
           ),
           if (widget.result.surplus > 0)
             _rowItem(
-              "총무 정산 혜택",
+              "총무 뽀찌",
               "+${f.format(widget.result.surplus.toInt())}${widget.splitCurrency == "KRW" ? "원" : " " + widget.splitCurrency}",
               false,
               valueColor: isDark

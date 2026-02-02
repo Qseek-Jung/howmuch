@@ -340,7 +340,7 @@ class ExcelService {
           accumulatedSurplus += (mRound - mExact);
         }
         settlementAmount = settlementAmount - accumulatedSurplus;
-        note = "총무 정산 혜택 (+${accumulatedSurplus.round()}원) 반영됨";
+        note = "총무 뽀찌 (+${accumulatedSurplus.round()}원) 반영됨";
       }
 
       final nameRange = sheet.getRangeByIndex(row, 1, row, 2);
