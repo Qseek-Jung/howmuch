@@ -625,22 +625,67 @@
     <!-- Contact Modal -->
     <div id="contact-modal" class="fixed inset-0 z-[110] hidden">
         <div class="absolute inset-0 bg-black/60 modal-blur" onclick="closeModal('contact-modal')"></div>
-        <div
-            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 md:w-96 bg-white rounded-3xl shadow-2xl p-8 flex flex-col items-center text-center">
-            <div class="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6">
-                <i data-lucide="mail" class="text-blue-600 h-10 w-10"></i>
+        <div id="contact-form-container"
+            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] md:w-[500px] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-fade-in-up">
+            <div class="p-6 border-b flex justify-between items-center bg-gray-50">
+                <h3 class="text-xl font-bold flex items-center gap-2">
+                    <i data-lucide="mail" class="text-blue-600 h-6 w-6"></i>
+                    문의하기
+                </h3>
+                <button onclick="closeModal('contact-modal')" class="p-2 hover:bg-gray-200 rounded-full transition">
+                    <i data-lucide="x" class="h-6 w-6 text-gray-600"></i>
+                </button>
             </div>
-            <h3 class="text-2xl font-bold mb-2">Contact Us</h3>
-            <p class="text-gray-500 mb-8">앱 사용 중 궁금하신 점이나<br>제안하실 의견이 있다면 메일을 보내주세요.</p>
 
-            <a href="mailto:support@howmuchapp.com"
-                class="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition shadow-lg shadow-blue-200 mb-4 block">
-                메일 보내기
-            </a>
-            <button onclick="closeModal('contact-modal')"
-                class="text-gray-400 font-medium hover:text-gray-600 transition">
-                닫기
-            </button>
+            <!-- Default Form State -->
+            <div id="contact-form-content" class="p-8">
+                <p class="text-gray-500 mb-6 text-sm italic">앱 사용 중 불편한 점이나 제안 사항이 있다면 자유롭게 적어주세요.</p>
+                <form id="contact-form" class="space-y-4">
+                    <!-- StaticForms configuration -->
+                    <input type="hidden" name="accessKey" value="b2241f71-2679-46c5-9b93-ae9e2fbe8b8b">
+                    <!-- Placeholder key, user should replace with their own if needed -->
+                    <input type="hidden" name="to" value="qseek77@gmail.com">
+                    <input type="hidden" name="subject" value="[얼마야? 문의사항]">
+                    <input type="text" name="honeypot" style="display:none"> <!-- Spam protection -->
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">보내는 분 (이름/이메일)</label>
+                        <input type="text" id="contact-name" name="name" required
+                            placeholder="홍길동 (customer@example.com)"
+                            class="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">문의 제목</label>
+                        <input type="text" id="contact-subject" name="$subject" required placeholder="제목을 입력해주세요"
+                            class="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">문의 내용</label>
+                        <textarea id="contact-message" name="message" required rows="5"
+                            placeholder="내용을 상세히 적어주시면 빠른 처리에 도움이 됩니다."
+                            class="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition resize-none"></textarea>
+                    </div>
+                    <button type="submit" id="contact-submit-btn"
+                        class="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition shadow-lg shadow-blue-200 mt-4 flex items-center justify-center gap-2">
+                        <span>완료 (보내기)</span>
+                        <i data-lucide="send" class="w-5 h-5"></i>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Success State (Hidden by default) -->
+            <div id="contact-success-content" class="hidden p-12 text-center flex flex-col items-center">
+                <div class="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-6 animate-bounce">
+                    <i data-lucide="check-circle-2" class="text-green-600 h-10 w-10"></i>
+                </div>
+                <h3 class="text-2xl font-bold mb-2">접수가 완료되었습니다!</h3>
+                <p class="text-gray-500 mb-8 leading-relaxed">보내주신 소중한 의견은<br><span
+                        class="text-blue-600 font-semibold">qseek77@gmail.com</span>으로 접수되었습니다.<br>최대한 빨리 답변 드리겠습니다.</p>
+                <button onclick="closeModal('contact-modal')"
+                    class="w-full bg-gray-900 text-white font-bold py-4 rounded-2xl hover:bg-black transition shadow-lg">
+                    확인
+                </button>
+            </div>
         </div>
     </div>
 
@@ -676,6 +721,65 @@
             if (document.getElementById('sidebar').classList.contains('closed')) {
                 document.body.style.overflow = '';
             }
+            // Reset contact form state if it was successful
+            if (id === 'contact-modal') {
+                setTimeout(() => {
+                    document.getElementById('contact-form-content').classList.remove('hidden');
+                    document.getElementById('contact-success-content').classList.add('hidden');
+                    document.getElementById('contact-form').reset();
+                }, 300);
+            }
+        }
+
+        // Contact form handling
+        const contactForm = document.getElementById('contact-form');
+        const contactFormContent = document.getElementById('contact-form-content');
+        const contactSuccessContent = document.getElementById('contact-success-content');
+        const submitBtn = document.getElementById('contact-submit-btn');
+
+        if (contactForm) {
+            contactForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+
+                // Show loading state
+                const btnText = submitBtn.querySelector('span');
+                const originalText = btnText.innerText;
+                btnText.innerText = '전송 중...';
+                submitBtn.disabled = true;
+
+                const formData = new FormData(contactForm);
+                const object = Object.fromEntries(formData);
+
+                // Custom subject format
+                object.subject = `[HowMuch App 문의] ${object.$subject}`;
+                delete object.$subject;
+
+                const json = JSON.stringify(object);
+
+                fetch('https://api.staticforms.xyz/submit', {
+                    method: 'POST',
+                    body: json,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                    .then(response => {
+                        if (response.ok) {
+                            contactFormContent.classList.add('hidden');
+                            contactSuccessContent.classList.remove('hidden');
+                        } else {
+                            alert('메일 전송에 실패했습니다. 잠시 후 다시 시도해주세요.');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('네트워크 오류가 발생했습니다.');
+                    })
+                    .finally(() => {
+                        btnText.innerText = originalText;
+                        submitBtn.disabled = false;
+                    });
+            });
         }
 
         // Mouse Parallax
