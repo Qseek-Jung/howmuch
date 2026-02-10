@@ -13,6 +13,7 @@ import '../providers/ad_settings_provider.dart';
 import 'home/currency_provider.dart';
 import 'widgets/global_banner_ad.dart';
 import 'widgets/location_auto_selector.dart';
+import '../services/remote_config_service.dart';
 
 class MainScaffold extends ConsumerStatefulWidget {
   const MainScaffold({super.key});
@@ -29,6 +30,23 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     const SplitHomeScreen(),
     const LedgerHomeScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Show offline snackbar once if detected at startup
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (RemoteConfigService.instance.isOffline) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('오프라인 모드로 실행 중입니다 (일부 기능 제한)'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -233,6 +251,35 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
+                if (RemoteConfigService.instance.isOffline) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.wifi_off, size: 14, color: Colors.orange),
+                        SizedBox(width: 6),
+                        Text(
+                          '오프라인 모드',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -297,8 +344,8 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
                   _buildDrawerDivider(),
                   _buildDrawerTile(
                     icon: CupertinoIcons.question_circle_fill,
-                    title: '도움말 및 문의',
-                    subtitle: '사용 방법과 피드백',
+                    title: '도움말',
+                    subtitle: '주요 기능 사용 방법',
                     onTap: () {
                       Navigator.pop(context);
                       context.push('/help');

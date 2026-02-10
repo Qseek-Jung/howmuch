@@ -13,8 +13,11 @@ class RemoteConfigService {
 
   final _supabase = Supabase.instance.client;
 
+  bool _isOffline = false;
+  bool get isOffline => _isOffline;
+
   /// Cache for settings
-  Map<String, dynamic> _settingsCache = {};
+  final Map<String, dynamic> _settingsCache = {};
   DateTime? _lastFetch;
   static const _cacheDuration = Duration(minutes: 5);
 
@@ -29,7 +32,8 @@ class RemoteConfigService {
 
       final response = await _supabase
           .from('app_settings')
-          .select('setting_key, setting_value');
+          .select('setting_key, setting_value')
+          .timeout(const Duration(seconds: 3));
 
       _settingsCache.clear();
       for (final row in response as List<dynamic>) {
@@ -38,8 +42,10 @@ class RemoteConfigService {
         _settingsCache[key] = value;
       }
       _lastFetch = DateTime.now();
+      _isOffline = false;
     } catch (e) {
-      print('Error fetching remote config: $e');
+      print('Error fetching remote config (Offline?): $e');
+      _isOffline = true;
       // Keep using cached data or defaults on error
     }
   }
@@ -100,6 +106,20 @@ class RemoteConfigService {
     // Default test IDs if not found in remote config
     if (Platform.isAndroid) return 'ca-app-pub-3940256099942544/6300978111';
     return 'ca-app-pub-3940256099942544/2934735716';
+  }
+
+  /// Get the minimum supported version
+  String getMinVersion() {
+    return getSetting<String>('min_version', defaultValue: '1.0.0') ?? '1.0.0';
+  }
+
+  /// Get the App Store / Play Store URL
+  String getAppStoreUrl() {
+    return getSetting<String>(
+          'app_store_url',
+          defaultValue: 'market://details?id=com.qseek.howmuch',
+        ) ??
+        'market://details?id=com.qseek.howmuch';
   }
 
   /// Clear cache

@@ -56,10 +56,10 @@ class UserSettings {
 
 class SettingsNotifier extends StateNotifier<UserSettings> {
   SettingsNotifier() : super(UserSettings()) {
-    _loadSettings();
+    loadSettings();
   }
 
-  Future<void> _loadSettings() async {
+  Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final themeIndex = prefs.getInt('theme_mode') ?? ThemeMode.system.index;
 

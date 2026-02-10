@@ -36,7 +36,7 @@ class LocationService {
       // Use low accuracy for speed and battery, we only need country
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.low,
-        timeLimit: const Duration(seconds: 10),
+        timeLimit: const Duration(seconds: 3),
       );
 
       // 4. Reverse Geocoding

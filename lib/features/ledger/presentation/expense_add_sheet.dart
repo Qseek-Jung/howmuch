@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/ledger_project.dart';
 import '../models/ledger_expense.dart';
 import '../providers/ledger_provider.dart';
+import '../services/ledger_image_service.dart';
 import '../../../providers/settings_provider.dart';
 
 import '../../../presentation/home/currency_provider.dart';
@@ -63,6 +65,7 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
   // Receipt Images
   List<XFile> _receiptImages = [];
   final ImagePicker _picker = ImagePicker();
+  final LedgerImageService _imageService = LedgerImageService();
 
   @override
   void initState() {
@@ -105,11 +108,11 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
           final validReceiptPaths = <XFile>[];
           for (final path in e.receiptPaths) {
             try {
-              final file = File(path);
-              if (await file.exists()) {
-                validReceiptPaths.add(XFile(path));
+              final file = await _imageService.getPermanentFile(path);
+              if (file != null) {
+                validReceiptPaths.add(XFile(file.path));
               } else {
-                debugPrint('Receipt image not found: $path');
+                debugPrint('Receipt image color not found/resolved: $path');
               }
             } catch (error) {
               debugPrint('Error loading receipt: $path - $error');
@@ -271,20 +274,75 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
     }
   }
 
-  Future<void> _pickReceiptImage() async {
+  Future<void> _pickReceiptImage(ImageSource source) async {
     try {
       final XFile? photo = await _picker.pickImage(
-        source: ImageSource.camera,
+        source: source,
         imageQuality: 70,
+        preferredCameraDevice: CameraDevice.rear,
       );
       if (photo != null && mounted) {
-        setState(() {
-          _receiptImages.add(photo);
-        });
+        // Immediately copy to permanent storage
+        final permanentFileName = await _imageService.copyToPermanent(photo);
+        if (permanentFileName != null) {
+          final permanentFile = await _imageService.getPermanentFile(
+            permanentFileName,
+          );
+          if (permanentFile != null && mounted) {
+            setState(() {
+              _receiptImages.add(XFile(permanentFile.path));
+            });
+          }
+        }
       }
     } catch (e) {
       debugPrint("Error picking image: $e");
     }
+  }
+
+  void _showImageSourceActionSheet() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('영수증 이미지 추가'),
+        message: const Text('이미지를 가져올 방법을 선택하세요.'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _pickReceiptImage(ImageSource.camera);
+            },
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(CupertinoIcons.camera),
+                SizedBox(width: 8),
+                Text('카메라로 촬영'),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _pickReceiptImage(ImageSource.gallery);
+            },
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(CupertinoIcons.photo),
+                SizedBox(width: 8),
+                Text('앨범에서 선택'),
+              ],
+            ),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(context),
+          child: const Text('취소'),
+        ),
+      ),
+    );
   }
 
   void _removeReceiptImage(int index) {
@@ -344,7 +402,13 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
         paymentMethod: _selectedPaymentMethod,
         payers: _selectedPayers,
         memo: _memoController.text,
-        receiptPaths: _receiptImages.map((img) => img.path).toList(),
+        receiptPaths: _receiptImages.map((img) {
+          final fileName = p.basename(img.path);
+          if (_imageService.isRelative(fileName)) {
+            return fileName;
+          }
+          return img.path;
+        }).toList(),
       );
       ref
           .read(ledgerProvider.notifier)
@@ -363,7 +427,13 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
         paymentMethod: _selectedPaymentMethod,
         payers: _selectedPayers,
         memo: _memoController.text,
-        receiptPaths: _receiptImages.map((img) => img.path).toList(),
+        receiptPaths: _receiptImages.map((img) {
+          final fileName = p.basename(img.path);
+          if (_imageService.isRelative(fileName)) {
+            return fileName;
+          }
+          return img.path;
+        }).toList(),
       );
       ref
           .read(ledgerProvider.notifier)
@@ -742,7 +812,7 @@ class _ExpenseAddSheetState extends ConsumerState<ExpenseAddSheet> {
                               if (index == _receiptImages.length) {
                                 // Add Button
                                 return GestureDetector(
-                                  onTap: _pickReceiptImage,
+                                  onTap: _showImageSourceActionSheet,
                                   child: Container(
                                     width: 120,
                                     margin: const EdgeInsets.only(right: 12),

@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>얼마야? - 관리자 대시보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #3b82f6;
+        }
+
+        .toggle-checkbox:checked+.toggle-label {
+            background-color: #3b82f6;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 min-h-screen text-slate-900">
+
+    <!-- Auth Guard Layer -->
+    <div id="login-screen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/10 backdrop-blur-xl hidden">
+        <div class="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-md border border-slate-100">
+            <div class="text-center mb-8">
+                <div
+                    class="w-20 h-20 bg-blue-600 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg shadow-blue-200">
+                    <i data-lucide="shield-check" class="text-white w-10 h-10"></i>
+                </div>
+                <h1 class="text-2xl font-bold">Admin Portal</h1>
+                <p class="text-slate-500 text-sm mt-2">qseek@naver.com 계정으로 로그인하세요</p>
+            </div>
+
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label
+                        class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1">Email</label>
+                    <input type="email" id="email" value="qseek@naver.com" readonly
+                        class="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition cursor-not-allowed">
+                </div>
+                <div>
+                    <label
+                        class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1">Password</label>
+                    <input type="password" id="password" required placeholder="••••••••"
+                        class="w-full px-5 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition">
+                </div>
+                <button type="submit" id="login-btn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl transition shadow-lg shadow-blue-200 flex items-center justify-center gap-2 mt-4">
+                    <span>로그인</span>
+                    <i data-lucide="log-in" class="w-5 h-5"></i>
+                </button>
+                <p id="login-error" class="text-red-500 text-xs text-center hidden"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard Main -->
+    <div id="admin-dashboard" class="flex flex-col md:flex-row h-screen hidden">
+        <!-- Sidebar -->
+        <aside class="w-full md:w-64 bg-white border-r border-slate-200 p-6 flex flex-col">
+            <div class="flex items-center gap-3 mb-10 px-2">
+                <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                    <i data-lucide="layout-dashboard" class="text-white w-5 h-5"></i>
+                </div>
+                <span class="font-bold text-lg tracking-tight">HowMuch Admin</span>
+            </div>
+
+            <nav class="space-y-1 flex-1">
+                <button onclick="showTab('stats')"
+                    class="tab-btn active w-full flex items-center gap-3 px-4 py-3 bg-blue-50 text-blue-600 rounded-xl font-medium transition">
+                    <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+                    통계 분석
+                </button>
+                <button onclick="showTab('config')"
+                    class="tab-btn w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition">
+                    <i data-lucide="settings-2" class="w-5 h-5"></i>
+                    앱 설정 (AdMob/버전)
+                </button>
+            </nav>
+
+            <div class="pt-6 border-t border-slate-100">
+                <button onclick="handleLogout()"
+                    class="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-xl font-medium transition">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                    로그아웃
+                </button>
+            </div>
+        </aside>
+
+        <!-- Content Area -->
+        <main class="flex-1 overflow-y-auto p-8 lg:p-12">
+            <!-- Header -->
+            <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-10">
+                <div>
+                    <h2 id="tab-title" class="text-3xl font-bold tracking-tight">방문자 통계</h2>
+                    <p id="tab-desc" class="text-slate-500 mt-1">오늘의 서비스 이용 현황을 확인합니다.</p>
+                </div>
+                <div
+                    class="flex items-center gap-2 text-sm text-slate-500 bg-white px-4 py-2 rounded-full border border-slate-200">
+                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    Live Dashboard
+                </div>
+            </header>
+
+            <!-- Tab: Stats -->
+            <div id="tab-stats" class="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <!-- Summary Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+                                <i data-lucide="eye" class="w-6 h-6"></i>
+                            </div>
+                            <span
+                                class="text-xs font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full">Today</span>
+                        </div>
+                        <h4 class="text-slate-500 text-sm font-medium">총 페이지 뷰</h4>
+                        <p id="total-views" class="text-3xl font-black mt-1">0</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="p-3 bg-purple-50 text-purple-600 rounded-2xl">
+                                <i data-lucide="users" class="w-6 h-6"></i>
+                            </div>
+                            <span
+                                class="text-xs font-bold text-purple-500 bg-purple-50 px-2 py-0.5 rounded-full">Today</span>
+                        </div>
+                        <h4 class="text-slate-500 text-sm font-medium">순 방문자 수</h4>
+                        <p id="unique-visitors" class="text-3xl font-black mt-1">0</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="p-3 bg-green-50 text-green-600 rounded-2xl">
+                                <i data-lucide="mouse-pointer-click" class="w-6 h-6"></i>
+                            </div>
+                            <span
+                                class="text-xs font-bold text-green-500 bg-green-50 px-2 py-0.5 rounded-full">Referrer</span>
+                        </div>
+                        <h4 class="text-slate-500 text-sm font-medium">주요 유입 경로</h4>
+                        <p id="top-referrer" class="text-3xl font-black mt-1 truncate">-</p>
+                    </div>
+                </div>
+
+                <!-- Page List -->
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                    <div class="p-6 border-b border-slate-50 flex justify-between items-center">
+                        <h3 class="font-bold">페이지별 방문 현황</h3>
+                        <button onclick="loadStats()" class="p-2 hover:bg-slate-50 rounded-lg transition">
+                            <i data-lucide="rotate-cw" class="w-4 h-4 text-slate-400"></i>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr class="bg-slate-50/50">
+                                    <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                        소스(환경)</th>
+                                    <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">페이지
+                                        경로</th>
+                                    <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">방문
+                                        횟수</th>
+                                    <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">비중
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="page-stats-body" class="divide-y divide-slate-50">
+                                <!-- Data rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Config -->
+            <div id="tab-config" class="hidden space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <!-- AdMob Settings -->
+                    <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="p-2 bg-yellow-50 text-yellow-600 rounded-xl">
+                                <i data-lucide="megaphone" class="w-6 h-6"></i>
+                            </div>
+                            <h3 class="font-bold text-xl">AdMob 광고 관리</h3>
+                        </div>
+                        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                            <div>
+                                <p class="font-bold">전체 광고 활성화</p>
+                                <p class="text-xs text-slate-500">꺼두면 앱 내 모든 광고가 노출되지 않습니다.</p>
+                            </div>
+                            <div class="relative inline-block w-12 h-6 transition duration-200 ease-in-out">
+                                <input type="checkbox" id="ads-toggle"
+                                    class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 transition-all duration-300 ring-0 outline-none" />
+                                <label for="ads-toggle"
+                                    class="toggle-label block overflow-hidden h-6 rounded-full bg-slate-300 cursor-pointer"></label>
+                            </div>
+                        </div>
+                        <button onclick="saveAdsSettings()"
+                            class="w-full mt-6 bg-slate-900 text-white font-bold py-4 rounded-2xl hover:bg-black transition shadow-lg">
+                            설정 저장
+                        </button>
+                    </div>
+
+                    <!-- Version Settings -->
+                    <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                                <i data-lucide="smartphone" class="w-6 h-6"></i>
+                            </div>
+                            <h3 class="font-bold text-xl">버전 및 업데이트</h3>
+                        </div>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">최소 지원
+                                    버전</label>
+                                <input type="text" id="min-version" placeholder="1.0.2"
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">마켓 이동
+                                    URL</label>
+                                <input type="text" id="app-store-url" placeholder="https://play.google.com/..."
+                                    class="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                        </div>
+                        <button onclick="saveVersionSettings()"
+                            class="w-full mt-6 bg-slate-900 text-white font-bold py-4 rounded-2xl hover:bg-black transition shadow-lg">
+                            버전 정보 반영
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Notification -->
+    <div id="toast"
+        class="fixed bottom-10 right-10 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl transition transform translate-y-20 opacity-0 z-[100] flex items-center gap-3">
+        <i data-lucide="check-circle-2" class="text-green-400 w-5 h-5"></i>
+        <span id="toast-msg">처리되었습니다</span>
+    </div>
+
+    <script>
+        // Supabase Init
+        const SB_URL = 'https://dnglcptmgjhoypsfoqaq.supabase.co';
+        const SB_KEY = 'sb_publishable_52PMdow5RYY_II2uRDN03w_UbgZEcRl';
+        const sb = supabase.createClient(SB_URL, SB_KEY);
+
+        // State
+        let currentUser = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            lucide.createIcons();
+            const { data } = await sb.auth.getUser();
+            if (data?.user) {
+                showDashboard(data.user);
+            } else {
+                showLogin();
+            }
+        });
+
+        // Auth Logic
+        const loginForm = document.getElementById('login-form');
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('login-btn');
+            const btnText = btn.querySelector('span');
+            const errorEl = document.getElementById('login-error');
+
+            btnText.innerText = '로그인 중...';
+            btn.disabled = true;
+            errorEl.classList.add('hidden');
+
+            const { data, error } = await sb.auth.signInWithPassword({ email, password });
+
+            if (error) {
+                errorEl.innerText = error.message;
+                errorEl.classList.remove('hidden');
+            } else {
+                showDashboard(data.user);
+            }
+
+            btnText.innerText = '로그인';
+            btn.disabled = false;
+        });
+
+        async function handleLogout() {
+            await sb.auth.signOut();
+            window.location.reload();
+        }
+
+        function showLogin() {
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('admin-dashboard').classList.add('hidden');
+        }
+
+        function showDashboard(user) {
+            currentUser = user;
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('admin-dashboard').classList.remove('hidden');
+            loadStats();
+            loadSettings();
+        }
+
+        // Tab Switching
+        function showTab(tabId) {
+            const tabs = ['stats', 'config'];
+            tabs.forEach(t => {
+                document.getElementById(`tab-${t}`).classList.add('hidden');
+            });
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+
+            const title = tabId === 'stats' ? '방문자 통계' : '앱 설정 관리';
+            const desc = tabId === 'stats' ? '오늘의 서비스 이용 현황을 확인합니다.' : '광고 활성화 및 필수 업데이트 버전을 설정합니다.';
+            document.getElementById('tab-title').innerText = title;
+            document.getElementById('tab-desc').innerText = desc;
+
+            // Sync nav buttons
+            const btns = document.querySelectorAll('.tab-btn');
+            btns.forEach(b => {
+                b.classList.remove('bg-blue-50', 'text-blue-600');
+                b.classList.add('text-slate-600');
+            });
+            event.currentTarget.classList.add('bg-blue-50', 'text-blue-600');
+            event.currentTarget.classList.remove('text-slate-600');
+        }
+
+        // Statistics Loading
+        async function loadStats() {
+            const today = new Date().toISOString().split('T')[0];
+
+            // 1. Total Views & Unique
+            const { data: views, error } = await sb.from('page_views')
+                .select('*')
+                .gte('timestamp', today);
+
+            if (views) {
+                document.getElementById('total-views').innerText = views.length;
+                const unique = new Set(views.map(v => v.visitor_id)).size;
+                document.getElementById('unique-visitors').innerText = unique;
+
+                // Referrers
+                const referrers = views.reduce((acc, v) => {
+                    acc[v.referrer] = (acc[v.referrer] || 0) + 1;
+                    return acc;
+                }, {});
+                const topRef = Object.entries(referrers).sort((a, b) => b[1] - a[1])[0];
+                document.getElementById('top-referrer').innerText = topRef ? topRef[0] : '-';
+
+                // Per-page table (Grouped by Source + Path for better insight)
+                const paths = views.reduce((acc, v) => {
+                    const src = v.referrer || 'Web';
+                    const key = `${src}|${v.page_path}`;
+                    acc[key] = (acc[key] || 0) + 1;
+                    return acc;
+                }, {});
+                const sortedPaths = Object.entries(paths).sort((a, b) => b[1] - a[1]);
+
+                const tableBody = document.getElementById('page-stats-body');
+                tableBody.innerHTML = sortedPaths.map(([key, count]) => {
+                    const [src, path] = key.split('|');
+                    const srcColor = src.includes('app') ? 'text-blue-600 bg-blue-50' : 'text-slate-500 bg-slate-50';
+                    return `
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="px-6 py-4">
+                            <span class="text-xs font-bold px-2 py-1 rounded-md ${srcColor}">${src}</span>
+                        </td>
+                        <td class="px-6 py-4 font-medium text-slate-700">${path || '/'}</td>
+                        <td class="px-6 py-4 font-bold">${count}</td>
+                        <td class="px-6 py-4">
+                            <div class="flex items-center gap-2">
+                                <div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div class="h-full bg-blue-500" style="width: ${(count / views.length * 100).toFixed(1)}%"></div>
+                                </div>
+                                <span class="text-xs text-slate-400 font-medium">${(count / views.length * 100).toFixed(1)}%</span>
+                            </div>
+                        </td>
+                    </tr>
+                `}).join('');
+                lucide.createIcons();
+            }
+        }
+
+        // Settings Loading & Saving
+        async function loadSettings() {
+            const { data } = await sb.from('app_settings').select('setting_key, setting_value');
+            if (data) {
+                const settings = data.reduce((acc, row) => {
+                    acc[row.setting_key] = row.setting_value;
+                    return acc;
+                }, {});
+
+                if (settings.ads_enabled !== undefined) {
+                    document.getElementById('ads-toggle').checked = settings.ads_enabled;
+                }
+                if (settings.min_version) {
+                    document.getElementById('min-version').value = settings.min_version;
+                }
+                if (settings.app_store_url) {
+                    document.getElementById('app-store-url').value = settings.app_store_url;
+                }
+            }
+        }
+
+        async function saveAdsSettings() {
+            const enabled = document.getElementById('ads-toggle').checked;
+            const { error } = await sb.from('app_settings')
+                .upsert({ setting_key: 'ads_enabled', setting_value: enabled }, { onConflict: 'setting_key' });
+
+            showToast(error ? '오류가 발생했습니다' : '광고 설정이 반영되었습니다');
+        }
+
+        async function saveVersionSettings() {
+            const minVersion = document.getElementById('min-version').value;
+            const storeUrl = document.getElementById('app-store-url').value;
+
+            await sb.from('app_settings').upsert({ setting_key: 'min_version', setting_value: minVersion }, { onConflict: 'setting_key' });
+            await sb.from('app_settings').upsert({ setting_key: 'app_store_url', setting_value: storeUrl }, { onConflict: 'setting_key' });
+
+            showToast('버전 정보가 성공적으로 반영되었습니다');
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+    </script>
+</body>
+
+</html>

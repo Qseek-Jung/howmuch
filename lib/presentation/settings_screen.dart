@@ -2,6 +2,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
+import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
+import '../features/ledger/providers/ledger_provider.dart';
+import '../features/ledger/models/ledger_backup.dart';
 import '../providers/settings_provider.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -31,6 +36,102 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _numberController.dispose();
     _holderController.dispose();
     super.dispose();
+  }
+
+  Future<void> _performRestore(LedgerBackup? data) async {
+    final success = await ref
+        .read(ledgerProvider.notifier)
+        .restoreFromFile(manualData: data);
+
+    if (mounted) {
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("데이터가 복구되었습니다."),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("복구가 취소되었거나 실패했습니다."),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _performManualRestore() async {
+    await _performRestore(null);
+  }
+
+  Future<void> _showBackupSelectionDialog(List<File> files) async {
+    final dateFormat = DateFormat('yyyy.MM.dd HH:mm');
+
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text("백업 파일 선택"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("저장소에서 백업 파일들을 찾았습니다. 복구할 파일을 선택해 주세요."),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 200,
+              width: double.maxFinite,
+              child: Material(
+                color: Colors.transparent,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: files.length,
+                  itemBuilder: (context, index) {
+                    final file = files[index];
+                    final fileName = file.path
+                        .split(Platform.pathSeparator)
+                        .last;
+                    final modified = file.lastModifiedSync();
+
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        fileName,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      subtitle: Text(
+                        dateFormat.format(modified),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final data = await ref
+                            .read(ledgerProvider.notifier)
+                            .loadFromSpecificFile(file);
+                        _performRestore(data);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          CupertinoDialogAction(
+            child: const Text("취소"),
+            onPressed: () => Navigator.pop(context),
+          ),
+          CupertinoDialogAction(
+            child: const Text("직접 선택"),
+            onPressed: () {
+              Navigator.pop(context);
+              _performManualRestore();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -259,6 +360,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   controller: _numberController,
                   icon: CupertinoIcons.number,
                   keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   onChanged: (v) => ref
                       .read(settingsProvider.notifier)
                       .updateAccountNumber(v),
@@ -271,6 +373,124 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (v) => ref
                       .read(settingsProvider.notifier)
                       .updateAccountHolder(v),
+                ),
+              ],
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: CupertinoFormSection.insetGrouped(
+              header: const Text("여계부 데이터 관리"),
+              backgroundColor: Colors.transparent,
+              footer: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  "데이터는 자동으로 파일로 백업됩니다. 앱 재설치 시에도 로컬에 저장된 백업 파일이 있다면 자동으로 복구됩니다. '백업 공유'를 통해 안전한 곳에 별도로 보관하는 것을 권장합니다.",
+                  style: TextStyle(fontSize: 13),
+                ),
+              ),
+              children: [
+                CupertinoFormRow(
+                  prefix: const Row(
+                    children: [
+                      Icon(CupertinoIcons.arrow_up_doc, size: 20),
+                      SizedBox(width: 12),
+                      Text("데이터 백업 및 공유"),
+                    ],
+                  ),
+                  child: CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    child: const Text("공유하기"),
+                    onPressed: () async {
+                      await ref
+                          .read(ledgerProvider.notifier)
+                          .saveManualBackup();
+                      await ref.read(ledgerProvider.notifier).shareBackup();
+                    },
+                  ),
+                ),
+                CupertinoFormRow(
+                  prefix: const Row(
+                    children: [
+                      Icon(CupertinoIcons.arrow_down_doc, size: 20),
+                      SizedBox(width: 12),
+                      Text("파일에서 데이터 복구"),
+                    ],
+                  ),
+                  child: CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    child: const Text("복구 실행"),
+                    onPressed: () async {
+                      // 1. Request Storage Permission (if Android)
+                      if (Platform.isAndroid) {
+                        // For Android 11+, we need manageExternalStorage to scan for files
+                        if (await Permission
+                                .manageExternalStorage
+                                .isRestricted ||
+                            !await Permission.manageExternalStorage.isGranted) {
+                          final status = await Permission.manageExternalStorage
+                              .request();
+                          if (!status.isGranted) {
+                            // Fallback to basic storage if possible, or show guidance
+                            await Permission.storage.request();
+                          }
+                        }
+                      }
+
+                      // 2. Scan External Storage
+                      final externalFiles = await ref
+                          .read(ledgerProvider.notifier)
+                          .getExternalBackupFiles();
+
+                      if (!mounted) return;
+
+                      if (externalFiles.isNotEmpty) {
+                        _showBackupSelectionDialog(externalFiles);
+                        return;
+                      }
+
+                      // 3. Check for auto-restore data as fallback
+                      final autoData = await ref
+                          .read(ledgerProvider.notifier)
+                          .getAutoRestoreData();
+
+                      if (!mounted) return;
+
+                      if (autoData != null && autoData.projects.isNotEmpty) {
+                        showCupertinoDialog(
+                          context: context,
+                          builder: (context) => CupertinoAlertDialog(
+                            title: const Text("데이터 복구"),
+                            content: const Text(
+                              "내부 백업 파일을 찾았습니다. 이 데이터로 복구하시겠습니까?\n(현재 데이터가 덮어씌워질 수 있습니다.)",
+                            ),
+                            actions: [
+                              CupertinoDialogAction(
+                                child: const Text("취소"),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                              CupertinoDialogAction(
+                                child: const Text("직접 선택"),
+                                onPressed: () async {
+                                  Navigator.pop(context);
+                                  _performManualRestore();
+                                },
+                              ),
+                              CupertinoDialogAction(
+                                isDestructiveAction: true,
+                                child: const Text("자동 복구"),
+                                onPressed: () async {
+                                  Navigator.pop(context);
+                                  _performRestore(autoData);
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      } else {
+                        _performManualRestore();
+                      }
+                    },
+                  ),
                 ),
               ],
             ),
@@ -298,6 +518,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required IconData icon,
     required ValueChanged<String> onChanged,
     TextInputType keyboardType = TextInputType.text,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -321,6 +542,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         placeholder: placeholder,
         onChanged: onChanged,
         keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
         textAlign: TextAlign.end,
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: null,

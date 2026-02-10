@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@100;300;400;500;700;900&display=swap"
         rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body {
             font-family: 'Noto Sans KR', sans-serif;
@@ -886,6 +887,33 @@
 
         // Initialize Lucide icons
         lucide.createIcons();
+
+        // --- Visitor Tracking (Supabase) ---
+        const SB_URL = 'https://dnglcptmgjhoypsfoqaq.supabase.co';
+        const SB_KEY = 'sb_publishable_52PMdow5RYY_II2uRDN03w_UbgZEcRl';
+        const supabase = supabase.createClient(SB_URL, SB_KEY);
+
+        async function trackVisit() {
+            try {
+                let visitorId = localStorage.getItem('visitor_id');
+                if (!visitorId) {
+                    visitorId = 'v-' + Math.random().toString(36).substr(2, 9);
+                    localStorage.setItem('visitor_id', visitorId);
+                }
+
+                await supabase.from('page_views').insert([{
+                    page_path: window.location.pathname + window.location.hash,
+                    visitor_id: visitorId,
+                    referrer: document.referrer || 'direct'
+                }]);
+            } catch (err) {
+                console.error('Tracking error:', err);
+            }
+        }
+
+        trackVisit();
+        // Track hash changes (for SPA-like navigation in the landing page)
+        window.addEventListener('hashchange', trackVisit);
     </script>
 </body>
 

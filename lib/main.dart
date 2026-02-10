@@ -9,6 +9,9 @@ import 'core/theme.dart';
 import 'providers/settings_provider.dart';
 import 'services/admob_service.dart';
 import 'services/remote_config_service.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/cupertino.dart';
 
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -24,14 +27,21 @@ void main() async {
     anonKey: Constants.supabaseAnonKey,
   );
 
-  // Fetch remote configuration (ads control, etc.)
-  await RemoteConfigService.instance.fetchSettings();
+  // Fetch remote configuration (ads control, etc.) - Max 3s wait
+  try {
+    await RemoteConfigService.instance.fetchSettings();
+  } catch (e) {
+    print('RemoteConfig fetch failed: $e');
+  }
 
-  // Initialize AdMob
-  await MobileAds.instance.initialize();
-
-  // Load first interstitial ad
-  AdMobService.instance.loadInterstitialAd();
+  // Initialize AdMob - Max 2s wait or just don't await if not critical
+  try {
+    await MobileAds.instance.initialize().timeout(const Duration(seconds: 2));
+    // Load first interstitial ad
+    AdMobService.instance.loadInterstitialAd();
+  } catch (e) {
+    print('AdMob initialization failed/timed out: $e');
+  }
 
   // TODO: Initialize Kakao SDK here
   // KakaoSdk.init(nativeAppKey: Constants.kakaoNativeAppKey);
@@ -54,6 +64,9 @@ class MyApp extends ConsumerWidget {
       themeMode: settings.themeMode,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        return VersionCheckWrapper(child: child!);
+      },
       // 🇰🇷 한글 로케일 지원
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -67,4 +80,81 @@ class MyApp extends ConsumerWidget {
       locale: const Locale('ko', 'KR'), // 기본 언어: 한국어
     );
   }
+}
+
+class VersionCheckWrapper extends StatefulWidget {
+  final Widget child;
+  const VersionCheckWrapper({super.key, required this.child});
+
+  @override
+  State<VersionCheckWrapper> createState() => _VersionCheckWrapperState();
+}
+
+class _VersionCheckWrapperState extends State<VersionCheckWrapper> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkVersion();
+    });
+  }
+
+  Future<void> _checkVersion() async {
+    try {
+      final remoteConfig = RemoteConfigService.instance;
+      final minVersion = remoteConfig.getMinVersion();
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+
+      if (_isVersionLower(currentVersion, minVersion)) {
+        if (!mounted) return;
+        _showUpdateDialog(remoteConfig.getAppStoreUrl());
+      }
+    } catch (e) {
+      debugPrint('Version check failed: $e');
+    }
+  }
+
+  bool _isVersionLower(String current, String min) {
+    try {
+      final currentParts = current.split('.').map(int.parse).toList();
+      final minParts = min.split('.').map(int.parse).toList();
+
+      for (int i = 0; i < 3; i++) {
+        final c = i < currentParts.length ? currentParts[i] : 0;
+        final m = i < minParts.length ? minParts[i] : 0;
+        if (c < m) return true;
+        if (c > m) return false;
+      }
+    } catch (e) {
+      return false;
+    }
+    return false;
+  }
+
+  void _showUpdateDialog(String storeUrl) {
+    showCupertinoDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('업데이트 안내'),
+        content: const Text('안정적인 서비스 이용을 위해 필수 업데이트가 필요합니다.'),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () async {
+              final url = Uri.parse(storeUrl);
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: const Text('업데이트 하러 가기'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

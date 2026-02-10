@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import '../core/design_system.dart';
 import '../services/remote_config_service.dart';
@@ -42,7 +43,17 @@ class _SplashScreenState extends State<SplashScreen>
     // Wait for both
     await Future.wait([minSplashDuration, configFetch]);
 
-    if (mounted) context.go('/');
+    // Check if onboarding was already seen
+    final prefs = await SharedPreferences.getInstance();
+    final seenOnboarding = prefs.getBool('seen_onboarding_v1') ?? false;
+
+    if (mounted) {
+      if (seenOnboarding) {
+        context.go('/');
+      } else {
+        context.go('/onboarding');
+      }
+    }
   }
 
   @override

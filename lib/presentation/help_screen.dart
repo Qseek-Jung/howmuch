@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class HelpScreen extends StatefulWidget {
   const HelpScreen({super.key});
@@ -18,152 +17,6 @@ class _HelpScreenState extends State<HelpScreen> {
     2: Text('여계부'),
   };
 
-  final TextEditingController _inquiryController = TextEditingController();
-
-  void _showInquiryModal() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _buildInquirySheet(context),
-    );
-  }
-
-  Widget _buildInquirySheet(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF1C1C1E) : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.black;
-
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("취소", style: TextStyle(fontSize: 16)),
-                ),
-                Text(
-                  "문의하기",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                  ),
-                ),
-                TextButton(
-                  onPressed: _submitInquiry,
-                  child: const Text(
-                    "보내기",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-
-          // Form
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Text(
-                  "어떤 도움이 필요하신가요?",
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "서비스 이용 중 궁금한 점이나 개선 제안을 자유롭게 남겨주세요.",
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isDark ? Colors.white60 : Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Input Field
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? const Color(0xFF2C2C2E)
-                        : const Color(0xFFF2F2F7),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: TextField(
-                    controller: _inquiryController,
-                    maxLines: 8,
-                    style: TextStyle(color: textColor, fontSize: 16),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      hintText: "내용을 입력하세요...",
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-                Text(
-                  "* '보내기'를 누르면 메일 앱이 실행되며 내용이 자동 입력됩니다.",
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white38 : Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _submitInquiry() async {
-    final content = _inquiryController.text.trim();
-    if (content.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('내용을 입력해주세요.')));
-      return;
-    }
-
-    final Uri emailLaunchUri = Uri(
-      scheme: 'mailto',
-      path: 'qseek77@gmail.com',
-      queryParameters: {'subject': '[얼마야?] 문의 및 피드백', 'body': content},
-    );
-
-    if (await canLaunchUrl(emailLaunchUri)) {
-      await launchUrl(emailLaunchUri);
-      if (mounted) Navigator.pop(context); // Close modal on success
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('메일 앱을 열 수 없습니다.')));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -173,22 +26,11 @@ class _HelpScreenState extends State<HelpScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text(
-          "도움말 및 문의",
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
+        title: const Text("도움말", style: TextStyle(fontWeight: FontWeight.w700)),
         backgroundColor: bgColor,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        actions: [
-          IconButton(
-            onPressed: _showInquiryModal,
-            icon: const Icon(CupertinoIcons.mail),
-            tooltip: '문의하기',
-          ),
-          const SizedBox(width: 8),
-        ],
       ),
       body: Column(
         children: [

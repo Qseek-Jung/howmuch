@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'home/currency_provider.dart';
@@ -84,21 +85,20 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
         _showOnboarding = true;
       });
 
-      Future.delayed(const Duration(milliseconds: 200), () async {
+      Future.delayed(const Duration(milliseconds: 500), () async {
         // Wait for PageController to have clients
         int retries = 0;
-        while ((!_pageController.hasClients) && retries < 10) {
+        while ((!_pageController.hasClients) && retries < 20) {
           await Future.delayed(const Duration(milliseconds: 100));
           retries++;
         }
 
-        if (!mounted || !_pageController.hasClients || !_showOnboarding) {
-          // If still no clients after retry, just hide onboarding
-          if (mounted && _showOnboarding) {
-            setState(() => _showOnboarding = false);
-          }
+        if (!mounted || !_pageController.hasClients) {
+          if (mounted) setState(() => _showOnboarding = false);
           return;
         }
+
+        if (!_showOnboarding) return;
         final width = MediaQuery.of(context).size.width;
 
         try {
@@ -924,12 +924,15 @@ class _HowMuchScreenState extends ConsumerState<HowMuchScreen>
         NotificationListener<UserScrollNotification>(
           onNotification: (notification) {
             if (_showOnboarding) {
-              print("User swipe detected! Hiding onboarding.");
-              _hideOnboardingTimer?.cancel();
-              setState(() => _showOnboarding = false);
-              SharedPreferences.getInstance().then((prefs) {
-                prefs.setBool('seen_swipe_onboarding_v8', true);
-              });
+              // Only hide if it's a user interaction, not programmatic animateTo
+              if (notification.direction != ScrollDirection.idle) {
+                print("User swipe detected! Hiding onboarding.");
+                _hideOnboardingTimer?.cancel();
+                setState(() => _showOnboarding = false);
+                SharedPreferences.getInstance().then((prefs) {
+                  prefs.setBool('seen_swipe_onboarding_v8', true);
+                });
+              }
             }
             return false;
           },
